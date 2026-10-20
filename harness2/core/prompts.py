@@ -292,6 +292,107 @@ Then reply with ONE `<notes>` block and nothing else: for each change, the momen
 trajectory that motivated it. The notes are read by a person, not applied by a machine."""
 
 
+_SURFACE_OMP = """\
+# WHAT YOU CAN CHANGE
+
+The harness is a tree of components. Each has a different runtime cost and a different reach:
+
+| path | what it is | when it is in context |
+|---|---|---|
+| `AGENTS.md` | role, procedure, rules, durable facts | ALWAYS ON -- the ONLY always-on file, injected whole into the system prompt of EVERY turn; every token competes with the agent's own output budget |
+| `.omp/skills/<name>/SKILL.md` | a reusable workflow | name+description listed up front; the BODY is read ON DEMAND as `skill://<name>` |
+| `.omp/skills/<name>/scripts/*` | a helper carried with its skill | run via bash |
+| `sub_agents/<name>/AGENT.md` | a delegated agent | spawned by the `task` tool in its OWN context, returns text |
+| `scripts/<name>.py` | a deterministic helper | run on demand via bash |
+| `.omp/extensions/<name>.ts` | an extension | ALWAYS LOADED, and acts INSIDE the tool loop |
+
+The three that are easy to get wrong:
+
+`.omp/skills/` -- YAML frontmatter with a `description:` is REQUIRED, or the skill is skipped
+silently at load; a `name:` line is optional and must match the directory (it overrides it).
+Only name and description are listed up front -- a skill never NAMED in `AGENTS.md` as a
+trigger is never opened, so it is pure dead weight. If a skill calls a helper, that helper must
+travel with it.
+
+`sub_agents/` -- frontmatter needs a `description:`; the runner installs each as the task agent
+`<name>`, which the main agent spawns with the `task` tool. It sees only what its own file and
+the assignment say, never the main conversation, and returns text. Worth it for exactly one
+shape of problem: a bounded sub-task whose INPUT is large and whose ANSWER is small. A bad trade
+when the output is as big as the input -- and where spawning is unavailable, do not write one.
+
+`.omp/extensions/<name>.ts` -- ONE TypeScript module whose default export is a function taking
+the extension API, `export default function (pi) { ... }`, registering handlers with `pi.on`:
+`"tool_call"` receives `event.toolName` and `event.input` and may return `{ block: true,
+reason }` to refuse the call with a corrective reason; `"tool_result"` receives `event.content`
+and `event.isError` and may return `{ content }` to rewrite what the model sees, or
+`{ additionalContext }` to add a targeted hint; `"session_stop"` may return `{ decision:
+"block", reason }` to send the agent back to work instead of finishing. The only component that
+acts in the tool loop rather than in the prompt -- the only way to enforce something the model
+cannot skip. Prose can be stopped reading; an extension cannot. Keep handlers fast and
+deterministic, and let a stop handler allow completion once its condition holds, or the run
+only ends at its time limit.
+
+Change only what a trajectory shows needs changing -- but WHERE you change something, the FORM
+matters as much as the content, and the cheap form is not the obvious one.
+
+ALWAYS-ON PROSE IS THE EXPENSIVE OPTION. Every word of it is in context on every run, competing
+with the agent's own output budget -- and the most costly failure on this work is a run that
+reasons until the budget is gone and produces nothing. Adding prose makes that MORE likely, not
+less. An on-demand component costs nothing until the moment it is invoked.
+
+So prefer, in this order:
+  - a SKILL for anything with a recognisable trigger -- a procedure for a document type, a
+    format, a recurring situation. This is the default form for new instruction.
+  - a SCRIPT for a deterministic operation the runs hand-rolled and got wrong, or did slowly.
+  - a SUBAGENT for a bounded investigation whose input is large and whose answer is small.
+  - an EXTENSION when a recurring, mechanical problem in the tool loop is better handled there
+    than in prose. It acts inside the loop, so it cannot be ignored AND it costs nothing in
+    always-on budget -- which makes it the cheap way to carry knowledge that prose would have to
+    repeat. The recurring shapes: appending a targeted hint after an error signature that keeps
+    recurring; blocking a known-bad call with a reason that teaches the fix; trimming noisy or
+    oversized tool output; and refusing to finish while a required file is missing.
+  - ALWAYS-ON TEXT last, and only for a short rule that genuinely applies to every run.
+    `AGENTS.md` is hard-capped, so if you add always-on text, cut something else to pay for
+    it.
+
+A skill only exists if the agent knows to read it: its literal name must appear in `AGENTS.md`
+as a trigger, or it is dead weight.
+
+`AGENTS.md` MUST NEVER BE LEFT EMPTY OR DELETED. It is the ONLY always-on file here, so a
+harness without it carries no standing instruction at all and is rejected before any rollout.
+To pay for a new rule, TRIM it -- never empty it.
+
+If a skill calls a helper script, ship it at `.omp/skills/<skill-name>/scripts/<file>.py`.
+A helper placed directly in the skill directory is OFF THE EDITABLE SURFACE and silently
+dropped, leaving the skill invoking a file that does not exist.
+
+THE DELIVERABLE'S SHAPE BELONGS TO THE REQUEST, NOT TO YOU. A harness changes HOW the agent
+works; it must never change WHAT SHAPE it delivers. Where the task names fields, columns, sheets,
+sections or an order, that shape is part of what was asked for. A component that tells the agent
+to add explanatory columns, restate a derivation inside the artifact, rename a header for
+clarity, or surface intermediate values so a reviewer can check them is CHANGING THE DELIVERABLE
+-- and a downstream reader or importer keys on exact names and positions. Guidance that makes the
+agent's reasoning visible belongs in the harness text or the trajectory, never in the artifact.
+A value the task asks for must be delivered AS A VALUE: a formula, a placeholder or a
+described-but-unperformed calculation leaves the reader to finish the work.
+
+# HOW TO MAKE A CHANGE
+
+The harness is in `context/harness/`, and it is YOURS TO EDIT. Open the files, change them in
+place with your normal tools, and create new ones where a new component is the right lever.
+Your edits on disk ARE the proposal -- there is no separate format to reproduce them in, and
+nothing you write in this reply changes the harness.
+
+- Files you do not touch are inherited unchanged. Do not rewrite a file to keep it the same.
+- Delete a file to remove that component.
+- If the evidence does not argue for any change, leave everything as it is and say KEEP_BASE
+  in your notes. That is a real answer, not a failure: adaptation the evidence does not support
+  costs context and buys nothing.
+
+Then reply with ONE `<notes>` block and nothing else: for each change, the moment in a
+trajectory that motivated it. The notes are read by a person, not applied by a machine."""
+
+
 GENERALIZE = """\
 # GROUND IT IN THIS WORKSPACE, SHAPE IT FOR THE {DOMAIN_WORD_UPPER}
 
@@ -513,6 +614,57 @@ Hard rules, each one learned from a previous failure:
   surface."""
 
 
+_TTS_SURFACE_HEAD_OMP = """\
+# EDITABLE HARNESS SURFACE
+
+You may write ONLY these paths. Anything else is off the editable surface: it is dropped before
+your work is used, however good it is.
+
+| path | component | when it is in context |
+|---|---|---|
+| `AGENTS.md` | c1/c3/c4/c6 persona, rules, durable facts, tool prose | ALWAYS ON -- the ONLY always-on file, injected whole into the system prompt of EVERY turn |
+| `.omp/skills/<name>/SKILL.md` | c6 reusable workflow | name+description listed; the BODY is read ON DEMAND as `skill://<name>` |
+| `.omp/skills/<name>/scripts/*` | helper carried with its skill | run via Bash |
+| `sub_agents/<name>/AGENT.md` | c5 delegated agent | spawned by the `task` tool in its OWN context, returns text |
+| `scripts/<name>.py` | c7 deterministic helper | run ON DEMAND via Bash as `python scripts/<name>.py` |
+| `.omp/extensions/<name>.ts` | c8 extension | always loaded; acts INSIDE the tool loop |
+
+## The two on-demand levers that are easy to get wrong
+
+`sub_agents/<name>/AGENT.md` -- frontmatter needs a `description:`; the runner installs each as
+the task agent `<name>`, which the main agent spawns with the `task` tool in a SEPARATE context.
+It sees only what its own file and the assignment say, never the main conversation, and it
+returns text. Worth it for exactly one shape of problem -- a bounded sub-task whose inputs are
+large and whose ANSWER is small. A bad trade when the output is as big as the input -- and
+where spawning is unavailable, do not write one.
+
+`.omp/extensions/<name>.ts` -- a TypeScript module whose default export is a function taking
+the extension API, `export default function (pi) { ... }`. Three handlers are useful:
+  - `pi.on("tool_result", ...)` -- inspect `event.content` / `event.isError` and return
+    `{ content }` to rewrite the output or `{ additionalContext }` to add a targeted hint
+  - `pi.on("tool_call", ...)` -- inspect `event.toolName` / `event.input` and return
+    `{ block: true, reason }` to refuse a known-bad call with a reason that teaches the fix
+  - `pi.on("session_stop", ...)` -- return `{ decision: "block", reason }` to send the agent
+    back to work while a required file is missing; it must allow completion once that holds
+Unlike everything else here it acts in the tool loop rather than in the prompt, which is the
+only way to enforce something the model cannot skip.
+
+Both levers are rare in the harnesses adopted so far. Read that as a gap in what has been tried,
+not as a verdict -- but still add one only where a trajectory shows the failure it would fix.
+
+Hard rules, each one learned from a previous failure:
+- The single most common failure of this harness family is producing NO deliverable because the
+  model exhausted its output budget on reasoning. Always-on prose makes that WORSE. Prefer an
+  on-demand skill over new always-on prose; if you add always-on text, cut something else --
+  `AGENTS.md` is hard-capped, and NEVER left empty: it is the only always-on file, so an empty
+  one is a harness that does not exist.
+- A skill's literal directory name must appear in `AGENTS.md` as a trigger, or the skill is
+  never opened. Skills are read as `skill://<name>`, scripts run via Bash.
+- `scripts/*.py` filenames must be snake_case and must compile under py_compile.
+- Never write `.omp/agents/`, `.omp/config.yml` or other runtime-owned files: they are not on
+  the editable surface."""
+
+
 _TTS_INV = """\
 # YOUR DIMENSION: INVARIANT -- how the agent works, independent of the subject
 
@@ -629,6 +781,13 @@ def _build_surface_texts() -> dict[str, _SurfaceText]:
             _surface_part(_SURFACE_CODEX, "# HOW TO MAKE A CHANGE"),
         ]
     )
+    omp_tts = "\n\n".join(
+        [
+            _TTS_SURFACE_HEAD_OMP,
+            _surface_part(_SURFACE_OMP, "A skill only exists", "THE DELIVERABLE'S SHAPE"),
+            _surface_part(_SURFACE_OMP, "# HOW TO MAKE A CHANGE"),
+        ]
+    )
     return {
         "opencode": _SurfaceText(
             surface_md=_SURFACE_OPENCODE,
@@ -657,6 +816,20 @@ def _build_surface_texts() -> dict[str, _SurfaceText]:
                 "that trigger line in the same edit.",
             ),
             tts_surface=cx_tts,
+        ),
+        "omp": _SurfaceText(
+            surface_md=_SURFACE_OMP,
+            inv=_INV_TEMPLATE.replace(
+                "__LOOP_LEVER__",
+                "`session_stop` handler in `.omp/extensions/<name>.ts` -- for example, "
+                "refusing a finish before a {deliverable} exists, with a corrective reason",
+            ),
+            dom=_DOM_TEMPLATE.replace(
+                "__TRIGGER_SENTENCE__",
+                "A skill exists only once its name appears in `AGENTS.md` as a trigger: write "
+                "that trigger line in the same edit.",
+            ),
+            tts_surface=omp_tts,
         ),
     }
 

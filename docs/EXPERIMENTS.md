@@ -25,6 +25,7 @@ separated by benchmark, executor, mode, budget, and seed.
 | `--k K --mode sequential` | Refine the harness through `K` successive steps |
 | `--workers N` | Run `N` domains concurrently; tasks within each domain stay ordered |
 | `--substrate cx` | Use Codex instead of the default OpenCode executor |
+| `--substrate omp` | Call the OMP runtime directly as the executor (JobBench and LAB) |
 | `--seed N` | Shuffle the task stream reproducibly; does not control model sampling |
 
 Use the same benchmark, executor, subset, `k`, mode, and seed for refinement,
@@ -104,9 +105,10 @@ hosts for the executor to reduce access to benchmark data and grading criteria:
 - `github.com` and `raw.githubusercontent.com`, for benchmark repositories
 
 Setup itself needs these hosts to download dependencies and data. Codex runs
-with its sandbox disabled, so apply restrictions at the network level, such as
-an egress firewall or DNS policy on the executor host, rather than relying on a
-tool setting. Report the restrictions used alongside results.
+with its sandbox disabled and OMP approves every tool call, so apply
+restrictions at the network level, such as an egress firewall or DNS policy on
+the executor host, rather than relying on a tool setting. Report the
+restrictions used alongside results.
 
 ## Results and resume
 

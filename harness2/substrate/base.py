@@ -71,8 +71,8 @@ class Substrate(Protocol):
         """Render this substrate's capture format into the shared grammar.
 
         `obs_trunc` and `max_chars` are carried on the cell's BenchSpec, never module-global
-        state. `args_trunc` is a per-substrate default (400 for opencode, 2000 for codex) that
-        BenchSpec does not carry and no caller overrides.
+        state. `args_trunc` is a per-substrate default (400 for opencode, 2000 for codex and
+        omp) that BenchSpec does not carry and no caller overrides.
         """
 
     def preflight(self) -> None:

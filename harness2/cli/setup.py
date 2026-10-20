@@ -21,6 +21,7 @@ import shutil
 import subprocess
 
 from harness2 import config, install
+from harness2.cli._common import SUBSTRATES, WB_OMP_ERROR
 
 
 def main(argv=None):
@@ -32,11 +33,13 @@ def main(argv=None):
         default=None,
         help="wb only: one subset to install; omitted installs office, web, and code",
     )
-    p.add_argument("--substrate", choices=("oc", "cx"), default="oc")
+    p.add_argument("--substrate", choices=SUBSTRATES, default="oc")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
     if args.subset and args.benchmark != "wb":
         p.error("--subset only applies to wb")
+    if args.benchmark == "wb" and args.substrate == "omp":
+        p.error(WB_OMP_ERROR)
     dry = args.dry_run
     missing = install.missing_runners()
     if missing and not dry:
@@ -106,6 +109,8 @@ def main(argv=None):
                 )
         if args.substrate == "cx":
             install.codex(dry_run=dry)
+        if args.substrate == "omp":
+            install.omp(dry_run=dry)
     except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
         p.exit(1, f"setup failed: {exc}\n")
     print(

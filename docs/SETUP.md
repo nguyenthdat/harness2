@@ -1,8 +1,8 @@
 # Setup guide
 
 Start with the [quick start](../README.md#install). This guide covers benchmark
-dependencies, model credentials, and the optional Codex executor. For individual
-benchmarks, see the [benchmark guides](BENCHMARKS.md).
+dependencies, model credentials, and the optional Codex and OMP executors. For
+individual benchmarks, see the [benchmark guides](BENCHMARKS.md).
 
 ## Requirements
 
@@ -139,6 +139,44 @@ changing either. `harness2-check` reports stale configuration until then.
 
 Codex runs with its sandbox disabled. Review the
 [executor network restrictions](EXPERIMENTS.md#web-access) before evaluation.
+
+## OMP executor
+
+The OMP executor calls your installed [OMP](https://github.com/can1357/oh-my-pi)
+runtime directly: each rollout is one `omp -p --mode json` process in the task
+workspace, with no runner in between. It supports JobBench and LAB; WorkBuddy
+runs its executors inside containers, so use OpenCode or Codex there.
+
+| Setting | Meaning |
+|---|---|
+| `HARNESS2_OMP_MODEL` | OMP `provider/model` selector; defaults to `HARNESS2_SOLVER_MODEL` |
+| `HARNESS2_OMP_PROFILE` | OMP profile the rollouts run under; defaults to `harness2` |
+| `HARNESS2_OMP_BIN` | The `omp` executable; defaults to `omp` on `PATH` |
+
+Rollouts never run under your own OMP profile. The inherited profile variables
+are removed, and a per-run settings overlay turns off the advisor, memory,
+recap, autolearn, and model fallback, and pins every model role and subagent to
+the executor model. The profile starts without credentials: Vertex AI models
+use Application Default Credentials, other providers read their API-key
+variables, and OAuth providers need `omp --profile harness2 login`. Define a
+custom OpenAI-compatible endpoint in the profile's `models.yml`; setup prints
+the profile directory. `harness2-check` confirms that the model resolves under
+the profile without calling it.
+
+```bash
+harness2-setup lab --substrate omp
+harness2-check --bench lab --substrate omp
+harness2 --bench lab --substrate omp --k 1 --mode parallel \
+  --only-domains antitrust-competition --max-tasks 1
+```
+
+The improver still runs on OpenCode, which setup installs for every benchmark.
+Setup does not install or pin OMP. Each run records the `omp` version and
+profile, so resuming after an OMP update requires a new `HARNESS2_RUNS_DIR`.
+Each rollout keeps its event stream, stderr, settings overlay, and OMP session
+beside the other rollout files. OMP approves every tool call and runs without a
+sandbox; review the [executor network restrictions](EXPERIMENTS.md#web-access)
+before evaluation.
 
 ## Network access during setup
 

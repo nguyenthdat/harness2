@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""LAB (harvey-labs) adapter: one class for both substrate cells.
+"""LAB (harvey-labs) adapter: one class for every substrate cell.
 
 Upstream tools run in subprocesses under `config.LAB_PYTHON`.
 `_task_json` strips grading criteria before exposing task data to the improver.
@@ -28,6 +28,7 @@ import subprocess
 import tempfile
 import threading
 from dataclasses import replace
+from datetime import datetime, timezone
 from functools import cache
 from pathlib import Path
 
@@ -36,7 +37,8 @@ from ..core import runmark as RM
 from ..core import tree as HT
 from ..core.spec import BenchPrompts, BenchSpec, resolve_channel_model
 from ..substrate.base import Install, RunRequest
-from ..substrate.codex import CODEX_SURFACE, CodexSubstrate
+from ..substrate.codex import CodexSubstrate
+from ..substrate.omp import OmpSubstrate, summarize
 from ..substrate.opencode import OPENCODE_SURFACE, OpencodeSubstrate
 from .tasks import discover, select
 
@@ -289,6 +291,7 @@ def lab_prompts(*, practice_area: str = "", work_type: str = "") -> BenchPrompts
     return replace(LAB_BASE, domain_guidance=guidance)
 
 
+# The base AGENTS.md body of both AGENTS.md cells, codex and omp.
 CODEX_BASE_BODY = """\
 You are an AI agent completing a professional work assignment inside a workspace.
 The assignment message gives the absolute paths that apply to this run.
@@ -477,13 +480,14 @@ def _require_runtime_scripts() -> frozenset[str]:
 
 def lab_spec(substrate_name: str) -> BenchSpec:
     """The LAB BenchSpec for one substrate cell. A value, not a code path."""
-    if substrate_name not in ("oc", "cx"):
-        raise ValueError(f"substrate must be 'oc' or 'cx', got {substrate_name!r}")
+    install_mode = {"oc": "workspace_config", "cx": "codex_root", "omp": "omp_root"}
+    if substrate_name not in install_mode:
+        raise ValueError(f"substrate must be one of {tuple(install_mode)}, got {substrate_name!r}")
     channel = resolve_channel_model(None, None, effort="high")
     return BenchSpec(
         name="lab",
         runs_root=config.RUNS / "lab",
-        install_mode="workspace_config" if substrate_name == "oc" else "codex_root",
+        install_mode=install_mode[substrate_name],
         prompts=LAB_BASE,
         channels={"proposer": channel, "selector": channel},
         domain_word="practice area",
@@ -496,7 +500,7 @@ def lab_spec(substrate_name: str) -> BenchSpec:
 
 
 class LabAdapter:
-    """The BenchmarkAdapter surface for LAB, on either substrate.
+    """The BenchmarkAdapter surface for LAB, on any substrate.
 
     skill_mode: `native` loads the base skill manuals on demand; `inline` puts the
     docx/xlsx/pptx manuals in the always-on body, which every proposal must re-emit.
@@ -521,12 +525,13 @@ class LabAdapter:
         if substrate == "oc":
             self.substrate = OpencodeSubstrate(launcher=self._launch_oc)
             self.model = model or config.SOLVER_MODEL_OC
-            self._results_root = config.RUNS / "lab" / "results" / "oc"
-        else:
+        elif substrate == "cx":
             self.substrate = CodexSubstrate(launcher=self._launch_cx)
             self.model = model or config.SOLVER_MODEL_CX
-
-            self._results_root = config.RUNS / "lab" / "results" / "cx"
+        else:
+            self.substrate = OmpSubstrate(launcher=self._launch_omp)
+            self.model = model or config.SOLVER_MODEL_OMP
+        self._results_root = config.RUNS / "lab" / "results" / self.substrate.name
         self.timeout = int(timeout or 3600)
         self.skill_mode = skill_mode
         self.solver_effort = solver_effort
@@ -734,6 +739,144 @@ class LabAdapter:
             dirs.append(self._run_dir(run_id))
         return dirs
 
+    def _launch_omp(self, req: RunRequest, install: Install) -> list[Path]:
+        """The OMP runtime itself, no runner: the codex runner's workspace, prompt and run
+        record around one `OmpSubstrate.run`. BASE arrives unstaged and is staged here."""
+        reader = config.lab_repo() / "opencode" / "scripts" / "read_doc.py"
+        _require_runner(reader)
+        base = install.extras.get("harness") == "base"
+        if base:
+            install = self.substrate.materialise(install.staging_dir, self.spec, {})
+        try:
+            return [
+                self._roll_omp(req.task_ref, run_id, install, req.timeout, reader)
+                for run_id in req.run_ids
+            ]
+        finally:
+            if base:
+                shutil.rmtree(install.staging_dir, ignore_errors=True)
+
+    def _roll_omp(
+        self, task_id: str, run_id: str, install: Install, timeout: int, reader: Path
+    ) -> Path:
+        """One rollout. Writes config.json, omp_events.jsonl (+ sidecars), output/ and
+        metrics.json last; a dead stream, a failed exit or no deliverable raises, leaving the
+        run unmarked so the next attempt re-rolls."""
+        run_dir = self._run_dir(run_id).resolve()
+        root = self._results_root.resolve()
+        if root not in run_dir.parents:
+            raise RuntimeError(f"run id escapes the LAB results root {root}: {run_id!r}")
+        run_dir.mkdir(parents=True, exist_ok=True)
+        ws = Path(tempfile.mkdtemp(prefix="harness2-omp-lab-"))
+        try:
+            (ws / "output").mkdir()
+            docs = self.task_files(task_id)
+            if docs is not None:
+                shutil.copytree(docs, ws / "documents")
+            else:
+                (ws / "documents").mkdir()
+            doc_files = sorted(p for p in (ws / "documents").rglob("*") if p.is_file())
+            for p in doc_files:
+                p.chmod(0o444)
+            installed = self.substrate.install(install, ws)
+            (ws / "scripts").mkdir(exist_ok=True)
+            shutil.copy2(reader, ws / "scripts" / "read_doc.py")  # LAST: the runtime's reader wins
+            instructions = str(self._task_json(task_id).get("instructions", "")).strip()
+            prompt = (
+                f"=== WORKSPACE ===\n{ws}\n\n"
+                f"=== DOCUMENTS (read-only) ===\n{ws / 'documents'}\n\n"
+                f"=== OUTPUT DIRECTORY (deliverables go here) ===\n{ws / 'output'}\n\n"
+                f"=== ASSIGNMENT ===\n{instructions}"
+            )
+            doc_parser = os.environ.get("LAB_DOC_PARSER", "sandbox")
+            started = {
+                "runner": "omp",
+                "omp_runtime": self.substrate.runtime(),
+                "model": self.model,
+                "reasoning_effort": self.solver_effort,
+                "task": task_id,
+                "run_id": run_id,
+                "timeout": timeout,
+                "harness_files": installed,
+                "doc_parser": doc_parser,
+                "workspace": str(ws),
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            }
+            (run_dir / "config.json").write_text(json.dumps(started, indent=2), encoding="utf-8")
+            env = {
+                **_lab_env(),
+                "LAB_DOC_PARSER": doc_parser,
+                "LAB_BENCH_ROOT": str(config.lab_repo()),
+            }
+            env.pop("XDG_DATA_HOME", None)  # read_doc.py's sandbox mode needs podman's own store
+            run = self.substrate.run(
+                prompt,
+                ws,
+                model=self.model,
+                timeout=timeout,
+                stream=run_dir / "omp_events.jsonl",
+                thinking=self.solver_effort,
+                env=env,
+            )
+            graded = run_dir / "output"
+            graded.mkdir(parents=True, exist_ok=True)
+            for src in (ws / "output").rglob("*"):
+                if src.is_file():
+                    dest = graded / src.relative_to(ws / "output")
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dest)
+            delivered = sorted(str(p.relative_to(graded)) for p in graded.rglob("*") if p.is_file())
+            left = sorted(p.relative_to(ws).as_posix() for p in ws.rglob("*") if p.is_file())
+            scratch = [rel for rel in left if not rel.startswith(("documents/", "output/"))][:200]
+        finally:
+            shutil.rmtree(ws, ignore_errors=True)
+
+        summary = summarize(run.stream)
+        if summary["n_events"] == 0:
+            raise RuntimeError(
+                f"omp produced no events for {task_id} @ {run_id} (exit {run.exit_code}); "
+                f"metrics.json not written: {run.stderr_tail()}"
+            )
+        ok = run.exit_code == 0 and not run.timed_out and bool(delivered)
+        stream_text = run.stream.read_text(encoding="utf-8", errors="replace")
+        doc_rels = [p.relative_to(ws / "documents").as_posix() for p in doc_files]
+        metrics = {
+            "runner": "omp",
+            "model": self.model,
+            "task": task_id,
+            "run_id": run_id,
+            "turn_count": summary["turns"],
+            "tool_calls": summary["tool_calls"],
+            "stream_errors": summary["errors"],
+            "input_tokens": summary["input_tokens"],
+            "input_tokens_note": "Every prompt token, cached ones included, as reported by OMP.",
+            "cached_input_tokens": summary["cached_input_tokens"],
+            "output_tokens": summary["output_tokens"],
+            "reasoning_tokens": summary["reasoning_tokens"],
+            "total_tokens": summary["input_tokens"] + summary["output_tokens"],
+            "cost_usd": round(summary["cost_usd"], 4),
+            "wall_clock_seconds": run.wall_s,
+            "finished_cleanly": ok,
+            "exit_code": run.exit_code,
+            "timed_out": run.timed_out,
+            "stop_reason": summary["stop_reason"],
+            "deliverables": delivered,
+            "documents_read": sum(1 for rel in doc_rels if rel in stream_text),
+            "total_documents": len(doc_rels),
+            "harness_files": installed,
+            "workspace_scratch_files": scratch,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+        if not ok:
+            ended = "timed out" if run.timed_out else f"exited {run.exit_code}"
+            raise RuntimeError(
+                f"omp rollout for {task_id} @ {run_id} {ended}"
+                f"{'' if delivered else ' with no deliverable'}; left UNMARKED so the next "
+                f"attempt re-rolls: {run.stderr_tail(300)}"
+            )
+        return run_dir
+
     def _safe_rmtree(self, d: Path) -> None:
         """rm -rf restricted to this cell's results root — a guard, not a convenience."""
         d = Path(d).resolve()
@@ -759,7 +902,11 @@ class LabAdapter:
 
     def trajectory(self, run_dir: Path, *, obs_trunc: int) -> str:
         """The substrate's ONE renderer over the raw session stream, effectively uncapped."""
-        name = "opencode_session.jsonl" if self.substrate.name == "oc" else "codex_session.jsonl"
+        name = {
+            "oc": "opencode_session.jsonl",
+            "cx": "codex_session.jsonl",
+            "omp": "omp_events.jsonl",
+        }[self.substrate.name]
         stream = Path(run_dir) / name
         if not stream.is_file():
             return f"(no trajectory recorded for {Path(run_dir).name})"
@@ -823,7 +970,7 @@ class LabAdapter:
         if self.substrate.name == "oc":
             d = self.spec.runs_root / f"_base_harness_{self.skill_mode}_{os.getpid()}"
         else:
-            d = self.spec.runs_root / f"_base_harness_cx_{os.getpid()}"
+            d = self.spec.runs_root / f"_base_harness_{self.substrate.name}_{os.getpid()}"
         with _BASE_LOCK:
             if d not in _BASE_DONE:
                 if self.substrate.name == "oc":
@@ -838,17 +985,17 @@ class LabAdapter:
                         d,
                     )
                 else:
-                    HT.write_tree(CODEX_SURFACE, {"AGENTS.md": CODEX_BASE_BODY}, d)
+                    HT.write_tree(self.substrate.surface(), {"AGENTS.md": CODEX_BASE_BODY}, d)
                 _BASE_DONE.add(d)
         return d
 
     def validate_tree(self, tree: dict[str, str]) -> None:
         """LAB environment invariants: deliverables go to output/, binary documents are read
-        via scripts/read_doc.py. oc checks the RENDERED prompt, cx the AGENTS.md body."""
+        via scripts/read_doc.py. oc checks the RENDERED prompt, cx and omp the AGENTS.md body."""
         if self.substrate.name == "oc":
             self._validate_oc(tree)
         else:
-            self._validate_cx(tree)
+            self._validate_agents_md(tree)
 
     def _validate_oc(self, tree: dict[str, str]) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -883,13 +1030,14 @@ class LabAdapter:
         if errs:
             raise ValueError(" | ".join(errs))
 
-    def _validate_cx(self, tree: dict[str, str]) -> None:
-        body = HT.always_on_text(CODEX_SURFACE, tree)
+    def _validate_agents_md(self, tree: dict[str, str]) -> None:
+        body = HT.always_on_text(self.substrate.surface(), tree)
+        runtime = {"cx": "codex", "omp": "omp"}[self.substrate.name]
         errs = []
         if "output/" not in body:
             errs.append(
                 "AGENTS.md must say deliverables go to `output/<filename>` "
-                "explicitly -- under codex nothing routes relative paths, and "
+                f"explicitly -- under {runtime} nothing routes relative paths, and "
                 "anything left outside output/ is invisible to grading. Add the "
                 "output/ rule back to AGENTS.md."
             )
@@ -938,8 +1086,10 @@ class LabAdapter:
         if self.substrate.name == "oc":
             _require_runner(config.lab_repo() / "opencode" / "run_opencode.py")
             _require_runtime_scripts()
-        else:
+        elif self.substrate.name == "cx":
             _require_runner(config.lab_repo() / "external" / "adapt_runs_cx" / "run_codex_lab.py")
+        else:
+            _require_runner(config.lab_repo() / "opencode" / "scripts" / "read_doc.py")
         try:
             r = subprocess.run(
                 [str(config.LAB_PYTHON), "-c", "import evaluation.scoring"],

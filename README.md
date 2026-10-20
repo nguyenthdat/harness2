@@ -44,8 +44,8 @@ harnesses, with gains of up to 11.5 points on WorkBuddy-Bench, 4.5 points on
 JobBench, and 11.8 percentage points on LAB's partial pass rate. Increasing the
 task-level recursion budget brings further gains.
 
-The release supports **parallel and sequential recursion**, **OpenCode and
-Codex executors**, and **JobBench, LAB, and WorkBuddy-Bench**.
+The release supports **parallel and sequential recursion**, **OpenCode, Codex, and OMP
+executors**, and **JobBench, LAB, and WorkBuddy-Bench**.
 
 ## Video overview
 
@@ -104,7 +104,8 @@ gcloud auth application-default login
 ```
 
 See the [setup guide](docs/SETUP.md) for model settings, authentication
-alternatives, and the [Codex executor](docs/SETUP.md#codex-executor).
+alternatives, the [Codex executor](docs/SETUP.md#codex-executor), and the
+[OMP executor](docs/SETUP.md#omp-executor).
 
 ## Run a benchmark
 
@@ -157,6 +158,7 @@ through successive Propose–Probe–Compose steps.
 | `--k K --mode parallel` | Probe `K` general and `K` domain-specific candidates, then produce `K` compositions |
 | `--k K --mode sequential` | Refine the harness through `K` successive steps |
 | `--substrate cx` | Use Codex instead of the default OpenCode executor |
+| `--substrate omp` | Call the OMP runtime directly as the executor (JobBench and LAB) |
 
 After each task, harnessing-level recursion retains the adopted harness and
 evidence-supported lessons to guide future refinement. See the
@@ -165,8 +167,8 @@ reproducibility, and baseline comparisons.
 
 ## Web access
 
-Executor network access is unrestricted, and Codex runs with its sandbox
-disabled. Public benchmark rubrics may be accessible online. Before evaluation,
+Executor network access is unrestricted, and Codex and OMP run tools without a
+sandbox. Public benchmark rubrics may be accessible online. Before evaluation,
 configure [network restrictions](docs/EXPERIMENTS.md#web-access) to prevent
 access to benchmark answers and grading criteria.
 

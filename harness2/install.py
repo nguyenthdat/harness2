@@ -282,6 +282,30 @@ def codex_config_error() -> str | None:
     return None
 
 
+def omp(*, dry_run=False):
+    """Check the OMP runtime the omp substrate calls and create its rollout profile.
+
+    The runtime is the operator's own install; setup pins nothing and only creates the
+    profile, printing its directory, which is where its models.yml and logins live.
+    """
+    binary = shutil.which(config.OMP_BIN)
+    if binary is None and not dry_run:
+        raise RuntimeError(
+            f"OMP runtime not found: {config.OMP_BIN!r} is not an executable on PATH; "
+            f"install omp or set HARNESS2_OMP_BIN to its path"
+        )
+    binary = binary or config.OMP_BIN
+    run([binary, "--version"], dry_run=dry_run)
+    run([binary, "--profile", config.OMP_PROFILE, "config", "path"], dry_run=dry_run)
+    print(
+        f"OMP rollouts run under profile {config.OMP_PROFILE!r} with HARNESS2_OMP_MODEL "
+        f"({config.SOLVER_MODEL_OMP or 'unset'}). Its credentials come from the environment "
+        f"(Vertex ADC, provider API keys) or `{binary} --profile {config.OMP_PROFILE} login`; a "
+        f"custom endpoint goes in models.yml in the directory above.",
+        flush=True,
+    )
+
+
 def download_jobbench(*, dry_run=False):
     """Install the JobBench task tree from its public Hugging Face dataset repo.
 

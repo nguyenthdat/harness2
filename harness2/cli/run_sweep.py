@@ -208,15 +208,25 @@ def _main(args: argparse.Namespace) -> int:
 
 def _check_identity(adapter, args, namespace_dir: Path) -> None:
     """Prevent a resumed run or library from silently mixing models or task partitions."""
+    executor = {
+        "oc": config.SOLVER_MODEL_OC,
+        "cx": config.SOLVER_MODEL_CX,
+        "omp": config.SOLVER_MODEL_OMP,
+    }[args.substrate]
+    endpoint = ""
+    if args.substrate == "cx":
+        endpoint = config.CODEX_BASE_URL
+    elif args.substrate == "omp":
+        endpoint = adapter.substrate.runtime()
     identity = {
         "method_version": config.METHOD_VERSION,
-        "executor": config.SOLVER_MODEL_OC if args.substrate == "oc" else config.SOLVER_MODEL_CX,
+        "executor": executor,
         "improver": config.IMPROVER_MODEL,
         "judge": config.JUDGE_MODEL,
         "project": config.VERTEX_PROJECT,
         "location": config.VERTEX_REGION,
         "judge_endpoint": config.JB_JUDGE_API_BASE,
-        "endpoint": config.CODEX_BASE_URL if args.substrate == "cx" else "",
+        "endpoint": endpoint,
         "split": args.split,
         "tasks": _stream_for(adapter, args)[1],
         "max_tasks": args.max_tasks,

@@ -76,9 +76,12 @@ def check(adapter, *, judge=False) -> list[str]:
     if not (config.OPENCODE_DIR / "node_modules").is_dir():
         errors.append(f"OpenCode dependencies missing; run harness2-setup {bench}")
 
-    if any(
-        m.startswith("google-vertex") for m in (config.SOLVER_MODEL_OC, config.IMPROVER_MODEL)
-    ) or (judge and (bench == "wb" or config.JUDGE_MODEL.startswith(("claude", "gemini")))):
+    executors = (config.SOLVER_MODEL_OC, config.IMPROVER_MODEL) + (
+        (config.SOLVER_MODEL_OMP,) if adapter.substrate.name == "omp" else ()
+    )
+    if any(m.startswith("google-vertex") for m in executors) or (
+        judge and (bench == "wb" or config.JUDGE_MODEL.startswith(("claude", "gemini")))
+    ):
         probe(
             "Google Application Default Credentials",
             ["gcloud", "auth", "application-default", "print-access-token"],

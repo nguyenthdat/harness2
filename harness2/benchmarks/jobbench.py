@@ -40,7 +40,9 @@ from ..core.spec import BenchPrompts, BenchSpec, resolve_channel_model
 from ..install import codex_config_error
 from ..substrate.base import Install, RunRequest
 from ..substrate.codex import CodexSubstrate
+from ..substrate.omp import OmpSubstrate
 from ..substrate.opencode import OUTPUT_TOKEN_MAX, OpencodeSubstrate
+from .jb_opencode_runner import PROMPT
 from .tasks import discover, select
 
 _RUNNER_DIR = config.THIRD_PARTY / "jb_runner"
@@ -494,9 +496,9 @@ def render_opencode_tree(staged: Path, render_dir: Path, ctx: dict) -> None:
             shutil.copy(p, rd / ".opencode" / "plugin" / p.name)
 
 
-_INSTALL_MODE = {"oc": "workspace_agents_md", "cx": "codex_root"}
+_INSTALL_MODE = {"oc": "workspace_agents_md", "cx": "codex_root", "omp": "omp_root"}
 
-_DEFAULT_TIMEOUT = {"oc": 2400, "cx": 3600}
+_DEFAULT_TIMEOUT = {"oc": 2400, "cx": 3600, "omp": 3600}
 
 
 def _channels() -> dict:
@@ -507,7 +509,9 @@ def _channels() -> dict:
 
 def make_spec(substrate: str) -> BenchSpec:
     if substrate not in _INSTALL_MODE:
-        raise ValueError(f"JobBench substrate must be 'oc' or 'cx', got {substrate!r}")
+        raise ValueError(
+            f"JobBench substrate must be one of {tuple(_INSTALL_MODE)}, got {substrate!r}"
+        )
     return BenchSpec(
         name="jb",
         runs_root=config.RUNS / "jb",
@@ -516,7 +520,7 @@ def make_spec(substrate: str) -> BenchSpec:
         channels=_channels(),
         domain_word="profession",
         leak_globs=("RUBRICS.json", "eval_result/**", "expected/**", "reference/**"),
-        allow_subagents=(substrate == "oc"),
+        allow_subagents=(substrate in ("oc", "omp")),
         obs_trunc=config.JB_OBS_TRUNC,
         proposer_deliverables="contents",
     )
@@ -620,7 +624,7 @@ def _parse_details(got: dict) -> dict | None:
 
 
 class JobBenchAdapter:
-    """JobBench behind the BenchmarkAdapter protocol, on either substrate."""
+    """JobBench behind the BenchmarkAdapter protocol, on any of the three substrates."""
 
     def __init__(
         self,
@@ -632,12 +636,12 @@ class JobBenchAdapter:
     ):
         self.split_file = split_file
         self.spec = make_spec(substrate)
-        launcher = self._launch_opencode if substrate == "oc" else self._launch_codex
-        self.substrate = (
-            OpencodeSubstrate(launcher=launcher)
-            if substrate == "oc"
-            else CodexSubstrate(launcher=launcher)
-        )
+        launcher, cls = {
+            "oc": (self._launch_opencode, OpencodeSubstrate),
+            "cx": (self._launch_codex, CodexSubstrate),
+            "omp": (self._launch_omp, OmpSubstrate),
+        }[substrate]
+        self.substrate = cls(launcher=launcher)
         self.timeout = int(timeout or _DEFAULT_TIMEOUT[substrate])
         self.store = Path(store_root) if store_root else config.RUNS / "jb" / "dataset"
 
@@ -829,6 +833,55 @@ class JobBenchAdapter:
         self._run_runner(CX_RUNNER, env, wall=t + 600, label=label)
         return [self._require_artifacts(task_id, label)]
 
+    def _launch_omp(self, req: RunRequest, install: Install) -> list[Path]:
+        """The OMP runtime itself, no runner: the oc/cx workspace layout and prompt, the
+        harness at the workspace root, deliverables moved into model_output/<label>/."""
+        task_id, label, t = self._launch_common(req)
+        self.substrate.preflight()
+        task_name = task_id.replace("/", "_")
+        traj = self._traj_dir(task_id, label)
+        traj.mkdir(parents=True, exist_ok=True)
+        ws = Path(tempfile.mkdtemp(prefix=f"harness2-omp-{task_name}-"))
+        try:
+            shutil.copytree(self.store / task_id / "task_folder", ws / "task_folder")
+            (ws / "output").mkdir()
+            self.substrate.install(install, ws)
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            run = self.substrate.run(
+                PROMPT.format(
+                    task_folder=ws / "task_folder", output_dir=ws / "output", workspace=ws
+                ),
+                ws,
+                model=config.SOLVER_MODEL_OMP,
+                timeout=t,
+                stream=traj / f"{task_name}_{label}_attempt1_{stamp}.jsonl",
+                env={
+                    **os.environ,
+                    "PATH": f"{config.JB_JUDGE_PYTHON.parent}:{config.BUN.parent}:"
+                    + os.environ.get("PATH", ""),
+                },
+            )
+            if run.timed_out or run.exit_code != 0:
+                ended = (
+                    f"reached its {t}s time limit" if run.timed_out else f"exited {run.exit_code}"
+                )
+                raise RuntimeError(
+                    f"omp {ended} for {label}; artifacts left UNMARKED so the next attempt "
+                    f"re-rolls instead of adopting a truncated or failed rollout: "
+                    f"{run.stderr_tail(300)}"
+                )
+            output = ws / "output"
+            delivered = sorted(output.iterdir()) if output.is_dir() else []
+            delivered = [p for p in delivered if not p.name.startswith(".")]
+            if delivered:
+                out = self._out_dir(task_id, label)
+                out.mkdir(parents=True, exist_ok=True)
+                for item in delivered:
+                    shutil.move(str(item), str(out / item.name))
+        finally:
+            shutil.rmtree(ws, ignore_errors=True)
+        return [self._require_artifacts(task_id, label)]
+
     def _run_runner(self, runner: Path, env: dict, *, wall: int, label: str) -> None:
         """Run the packaged launcher; timeouts leave the rollout incomplete."""
         if not runner.is_file():
@@ -948,6 +1001,8 @@ class JobBenchAdapter:
         return str(self._extract(d)["flat"]) if d.is_dir() else ""
 
     def base_harness(self) -> Path:
+        # The AGENTS.md-only base serves both AGENTS.md surfaces, codex and omp, so their
+        # base rollouts start from the same instruction.
         base = OC_BASE_HARNESS if self.substrate.name == "oc" else CX_BASE_HARNESS
         if not HT.is_tree(self.substrate.surface(), base):
             raise FileNotFoundError(
