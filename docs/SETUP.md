@@ -178,6 +178,10 @@ beside the other rollout files. OMP approves every tool call and runs without a
 sandbox; review the [executor network restrictions](EXPERIMENTS.md#web-access)
 before evaluation.
 
+For an end-to-end walkthrough with DeepSeek models in every role, reading the
+results, and moving an adopted harness into your own profile, see the
+[OMP profile guide](OMP.md) ([Tiếng Việt](OMP.vi.md)).
+
 ## Network access during setup
 
 Setup downloads dependencies from the following hosts:
