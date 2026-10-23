@@ -437,7 +437,7 @@ class OmpSubstrate:
         """One headless turn: the prompt arrives on stdin, events leave on stdout as NDJSON."""
         bin_path = binary or self.binary()
         prof = profile or config.OMP_PROFILE
-        return [
+        args = [
             bin_path,
             "--profile",
             prof,
@@ -460,6 +460,10 @@ class OmpSubstrate:
             "--no-lsp",
             "--no-prewalk",
         ]
+        agents_file = workspace / "AGENTS.md"
+        if agents_file.is_file():
+            return args + ["--append-system-prompt", str(agents_file)]
+        return args
 
     def run(
         self,

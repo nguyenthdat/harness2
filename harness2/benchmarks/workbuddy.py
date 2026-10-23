@@ -699,10 +699,13 @@ def run_batch(
         )
 
         timeout_s = timeout_s or int((len(todo) * k / _conc(substrate)) * 3600 * 1.2 + 900)
+        existing_pythonpath = os.environ.get("PYTHONPATH", "")
+        pythonpath = f"{config.ROOT}:{existing_pythonpath}".rstrip(":") if existing_pythonpath else str(config.ROOT)
         env = {
             **os.environ,
             "NO_FORCE_BUILD": "1",
             "HARNESS2_WB_VERTEX_URL": config.VERTEX_OPENAI_URL + "/chat/completions",
+            "PYTHONPATH": pythonpath,
         }
         try:
             with _slots[substrate]:
@@ -872,6 +875,9 @@ class WbAdapter:
 
     def _install(self, harness_dir: Path | None) -> Install:
         if harness_dir is None:
+            if self.substrate.name == "omp":
+                inst = self.substrate.materialise(self.base_harness(), self.spec, {})
+                return Install(staging_dir=inst.staging_dir, fingerprint="base", extras={**inst.extras, "base_staged": True})
             return Install(
                 staging_dir=self.spec.runs_root, fingerprint="base", extras={"install_mode": "none"}
             )
@@ -879,13 +885,13 @@ class WbAdapter:
 
     @staticmethod
     def _drop_staging(install: Install) -> None:
-        if install.fingerprint != "base":
+        if install.fingerprint != "base" or install.extras.get("base_staged"):
             shutil.rmtree(install.staging_dir, ignore_errors=True)
 
     def _launch(self, req: RunRequest, install: Install) -> list[Path]:
         """The benchmark-supplied launcher body: the finished trials among the run dirs
         this invocation created, ranked; the adapter trims and marks them."""
-        ws = None if install.fingerprint == "base" else install.staging_dir
+        ws = install.staging_dir if (self.substrate.name == "omp" or install.fingerprint != "base") else None
         k = len(req.run_ids)
         label = self._label(req.run_ids[0], k)
         if self.substrate.name == "cx":
@@ -1033,7 +1039,14 @@ class WbAdapter:
                         {
                             "AGENTS.md": (
                                 "Follow the task instructions and complete the requested work in the "
-                                "workspace, writing every deliverable where the instructions say."
+                                "workspace, writing every deliverable where the instructions say.\n\n"
+                                "CRITICAL CONSTRAINTS:\n"
+                                "- You are strictly confined to the current workspace directory. "
+                                "All relevant code and project files are inside this workspace.\n"
+                                "- Never search, inspect, read, or execute files outside this workspace "
+                                "(such as parent directories, /tmp, /var, or host paths).\n"
+                                "- Never search for, inspect, run, or reference benchmark verifiers, "
+                                "grading scripts, or answer keys (e.g. verifier.py, test.sh, gold.patch).\n"
                             )
                         },
                         d,

@@ -77,30 +77,42 @@ class OmpAgent(BaseInstalledAgent):
     ) -> None:
         instruction = self.render_instruction(instruction)
         local_ws = Path(tempfile.mkdtemp(prefix="wb-omp-ws-"))
+        host_tmp = Path(tempfile.mkdtemp(prefix="wb-omp-tmp-"))
         try:
             await environment.download_dir("/workspace", local_ws)
-            await self._run_omp(instruction, local_ws)
+            await self._run_omp(instruction, local_ws, host_tmp)
+            shutil.rmtree(local_ws / ".tmp", ignore_errors=True)
             await environment.upload_dir(local_ws, "/workspace")
             run_user = getattr(environment, "default_user", None)
-            if run_user not in (None, "", "root", 0, "0"):
-                import shlex
-                u = shlex.quote(str(run_user))
-                await self.exec_as_root(
-                    environment,
-                    command=(
-                        f"chown -R {u} /workspace && "
-                        f"mkdir -p /logs/verifier && chmod -R a+rwx /logs/verifier && "
-                        f"(chmod -R a+rX /tests 2>/dev/null || true)"
-                    ),
-                )
+            target_user = "root" if run_user in (None, "", "root", 0, "0") else str(run_user)
+            import shlex
+            u = shlex.quote(target_user)
+            await self.exec_as_root(
+                environment,
+                command=(
+                    "git config --system --add safe.directory '*' 2>/dev/null || true; "
+                    f"chown -R {u} /workspace && "
+                    "mkdir -p /logs/verifier && chmod -R a+rwx /logs/verifier && "
+                    "(chmod -R a+rX /tests 2>/dev/null || true)"
+                ),
+            )
         finally:
             shutil.rmtree(local_ws, ignore_errors=True)
+            shutil.rmtree(host_tmp, ignore_errors=True)
         self.populate_context_post_run(context)
 
-    async def _run_omp(self, instruction: str, local_ws: Path) -> None:
-        from harness2 import config
-        from harness2.substrate.omp import OmpSubstrate
-
+    async def _run_omp(self, instruction: str, local_ws: Path, host_tmp: Path | None = None) -> None:
+        try:
+            from harness2 import config
+            from harness2.substrate.omp import OmpSubstrate
+        except ModuleNotFoundError:
+            import sys
+            current = Path(__file__).resolve()
+            for parent in current.parents:
+                if (parent / "harness2").is_dir() and str(parent) not in sys.path:
+                    sys.path.insert(0, str(parent))
+            from harness2 import config
+            from harness2.substrate.omp import OmpSubstrate
         output_file = self.logs_dir / _OUTPUT_FILENAME
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -116,6 +128,13 @@ class OmpAgent(BaseInstalledAgent):
 
         timeout = int(self._agent_timeout_sec or 3600)
 
+        child_env = dict(os.environ)
+        if host_tmp is not None:
+            child_env["TMPDIR"] = str(host_tmp)
+            child_env["TEMP"] = str(host_tmp)
+            child_env["TMP"] = str(host_tmp)
+        child_env["PWD"] = str(local_ws)
+
         run = await substrate.run_async(
             instruction,
             local_ws,
@@ -124,6 +143,7 @@ class OmpAgent(BaseInstalledAgent):
             stream=output_file,
             profile=self._omp_profile,
             binary=self._omp_bin,
+            env=child_env,
         )
 
         legacy_stderr = self.logs_dir / _STDERR_FILENAME

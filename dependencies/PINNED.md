@@ -7,7 +7,7 @@ checkout at another revision.
 | Repository | Commit |
 |---|---|
 | job-bench-eval | `fa03a17f9ff662f136798a274e10011c3aa00fd0` |
-| workbuddy-bench | `b516950be5b56eb3be406c2f76ee1c5111dcb57f` |
+| workbuddy-bench | `625b2233093ae4f23e76be28c1f341d41cc70373` |
 | harvey-labs | `b58a28ae9fde5ee4b810e53b4fd0a1915325a35d` |
 | opencode | `23fb5e0516c99ac04a1aa46c193efda2e1b9bb24` |
 
