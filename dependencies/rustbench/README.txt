@@ -1,0 +1,1 @@
+Run: uv pip install datasets pyarrow && python -c "from datasets import load_dataset; ds=load_dataset(\"user2f86/rustbench\",revision=\"25020a91c4bba218e4a143ff315d93beb328c78b\",split=\"train\"); ds.to_parquet(\"/Users/dat.nguyen/Projects/harness2/dependencies/rustbench/rustbench.parquet\")"

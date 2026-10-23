@@ -43,19 +43,32 @@ def check(adapter, *, judge=False) -> list[str]:
             errors.append(f"{label}: {type(exc).__name__}; see README.md")
             return False
 
-    for validate in (
+    validators = [
         lambda: config.validate_models(judge=judge),
         adapter.tasks,
         OpencodeSubstrate().preflight,
-        adapter.preflight,
-    ):
+    ]
+    adapter_preflight = getattr(adapter, "preflight", None)
+    if adapter_preflight is not None:
+        validators.append(adapter_preflight)
+    for validate in validators:
         try:
             validate()
         except (OSError, RuntimeError, ValueError) as exc:
             errors.append(str(exc))
 
     bench = adapter.spec.name.split("-", 1)[0]
-    name = {"jb": "job-bench-eval", "lab": "harvey-labs", "wb": "workbuddy-bench"}[bench]
+    name = {
+        "jb": "job-bench-eval",
+        "lab": "harvey-labs",
+        "wb": "workbuddy-bench",
+        "cve": "cve-bench",
+        "cyber": "cybench",
+        "rswe": "Rust-SWE-Bench",
+        "crust": "CRUST-bench",
+        "agentre": "AgentRE-Bench",
+        "binaudit": "BinaryAudit",
+    }.get(bench, bench)
     repo = config.DEPENDENCIES / name
     for dependency in (name, "opencode"):
         target = config.DEPENDENCIES / dependency
@@ -68,6 +81,8 @@ def check(adapter, *, judge=False) -> list[str]:
                     errors.append(f"{dependency}: checkout differs from the supported pin")
             except subprocess.CalledProcessError:
                 errors.append(f"{dependency}: cannot read checkout revision")
+        if dependency not in PATCHES:
+            continue
         patch = config.THIRD_PARTY / "patches" / PATCHES[dependency]
         probe(
             f"{dependency} patch",

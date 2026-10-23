@@ -27,8 +27,8 @@ from ..core import library as LIB
 from ..core import schedule as SCHED
 from ..core.spec import BenchmarkAdapter
 
-BENCHES = ("jb", "wb", "lab")
-WB_SUBSETS = ("office", "web", "code")
+BENCHES = ("jb", "wb", "lab", "cve", "cyber", "rswe", "crust", "agentre", "binaudit")
+WB_SUBSETS = ("office", "web", "code", "sec")
 SUBSTRATES = ("oc", "cx", "omp")
 WB_OMP_ERROR = (
     "--substrate omp runs the OMP runtime directly on this host, but WorkBuddy runs every "
@@ -68,9 +68,35 @@ def make_adapter(
         from ..benchmarks.jobbench import JobBenchAdapter
 
         return JobBenchAdapter(substrate=substrate, split_file=split_file)
-    from ..benchmarks.lab import LabAdapter
+    if bench == "lab":
+        from ..benchmarks.lab import LabAdapter
 
-    return LabAdapter(substrate=substrate, split_file=split_file)
+        return LabAdapter(substrate=substrate, split_file=split_file)
+    if bench == "cve":
+        from ..benchmarks.cvebench import CveBenchAdapter
+
+        return CveBenchAdapter(substrate=substrate, split_file=split_file)
+    if bench == "cyber":
+        from ..benchmarks.cybench import CybenchAdapter
+
+        return CybenchAdapter(substrate=substrate, split_file=split_file)
+    if bench == "rswe":
+        from ..benchmarks.rustswebench import RustSWEBenchAdapter
+
+        return RustSWEBenchAdapter(substrate=substrate, split_file=split_file)
+    if bench == "crust":
+        from ..benchmarks.crustbench import CrustAdapter
+
+        return CrustAdapter(substrate=substrate, split_file=split_file)
+    if bench == "agentre":
+        from ..benchmarks.agentre import AgentREAdapter
+
+        return AgentREAdapter(substrate=substrate, split_file=split_file)
+    if bench == "binaudit":
+        from ..benchmarks.binaudit import BinaryAuditAdapter
+
+        return BinaryAuditAdapter(substrate=substrate, split_file=split_file)
+    raise ValueError(f"Unhandled bench {bench!r}")
 
 
 def runs_root_for(adapter: BenchmarkAdapter) -> Path:

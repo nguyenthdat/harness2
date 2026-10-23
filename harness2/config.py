@@ -106,12 +106,24 @@ DEPENDENCY_PINS = {
     "workbuddy-bench": "b516950be5b56eb3be406c2f76ee1c5111dcb57f",
     "harvey-labs": "b58a28ae9fde5ee4b810e53b4fd0a1915325a35d",
     "opencode": "23fb5e0516c99ac04a1aa46c193efda2e1b9bb24",
+    "cybench": "ca483c6443f17a20ba7d6bac3d274859a1721e51",
+    "cve-bench": "9fb3e068f260b00dd899ef87951b88e9c60061f1",
+    "Rust-SWE-Bench": "6275b18be51ce3242de9e959a32260dd59909595",
+    "CRUST-bench": "4b4702544b800a3821feea128c5b9e413665dc83",
+    "AgentRE-Bench": "654c4042bb0022b32b522769d99f76b103f5d504",
+    "BinaryAudit": "175b7ec1a39b7ba1545ae008a9e93106348c3b4e",
 }
 DEPENDENCY_ORIGINS = {
     "job-bench-eval": "https://github.com/Job-Bench/job-bench-eval.git",
     "workbuddy-bench": "https://github.com/Tencent/workbuddy-bench.git",
     "harvey-labs": "https://github.com/harveyai/harvey-labs.git",
     "opencode": "https://github.com/anomalyco/opencode.git",
+    "cybench": "https://github.com/andyzorigin/cybench.git",
+    "cve-bench": "https://github.com/uiuc-kang-lab/cve-bench.git",
+    "Rust-SWE-Bench": "https://github.com/GhabiX/Rust-SWE-Bench.git",
+    "CRUST-bench": "https://github.com/anirudhkhatry/CRUST-bench.git",
+    "AgentRE-Bench": "https://github.com/agentrebench/AgentRE-Bench.git",
+    "BinaryAudit": "https://github.com/QuesmaOrg/BinaryAudit.git",
 }
 
 
@@ -126,6 +138,30 @@ def wb_repo() -> Path:
 def lab_repo() -> Path:
     return DEPENDENCIES / "harvey-labs"
 
+
+
+def cyber_repo() -> Path:
+    return DEPENDENCIES / "cybench"
+
+
+def cve_repo() -> Path:
+    return DEPENDENCIES / "cve-bench"
+
+
+def rswe_repo() -> Path:
+    return DEPENDENCIES / "Rust-SWE-Bench"
+
+
+def crust_repo() -> Path:
+    return DEPENDENCIES / "CRUST-bench"
+
+
+def agentre_repo() -> Path:
+    return DEPENDENCIES / "AgentRE-Bench"
+
+
+def binaudit_repo() -> Path:
+    return DEPENDENCIES / "BinaryAudit"
 
 OPENCODE_DIR = DEPENDENCIES / "opencode"
 BUN = DEPENDENCIES / "tools" / "node_modules" / ".bin" / "bun"

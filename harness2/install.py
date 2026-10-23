@@ -104,6 +104,8 @@ def clone(name: str, *, dry_run=False):
 
 
 def patch(name: str, *, dry_run=False):
+    if name not in PATCHES:
+        return
     repo = config.DEPENDENCIES / name
     source = config.THIRD_PARTY / "patches" / PATCHES[name]
     if dry_run:

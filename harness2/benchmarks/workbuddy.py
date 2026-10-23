@@ -107,6 +107,20 @@ SUBSETS: dict[str, Subset] = {
         scoring="rubric",
         leak_globs=("tests/**", "environment/**"),
     ),
+    "sec": Subset(
+        name="sec",
+        dataset_id="wb-bench-sec-v1.0",
+        domain_field="category",
+        deliverable="security analysis, exploit, or defensive rule",
+        scoring="rule",
+        leak_globs=(
+            "tests/**",
+            "solution/**",
+            "environment/**",
+            "steps/**/solution/**",
+            "steps/**/tests/**",
+        ),
+    ),
 }
 
 
@@ -292,6 +306,37 @@ WORKBUDDY_BASES: dict[str, BenchPrompts] = {
             "and reopen successfully in their real format."
         ),
     ),
+    "sec": BenchPrompts(
+        work=(
+            "Security tasks: vulnerability exploitation, binary reverse engineering, defensive rule "
+            "generation, malware analysis, or forensic investigation. Deliver working exploits, "
+            "analysis reports, detection rules or defensive artifacts depending on the assignment."
+        ),
+        domain_word="security category",
+        deliverable_word="security artifact",
+        inv_levers=(
+            "- inventory environment constraints, available tools, target binaries or source, and "
+            "required artifact format\n"
+            "- reproduce or analyze the behavior systematically using available tooling\n"
+            "- validate detection rules against provided samples; test exploits in the target "
+            "environment when allowed\n"
+            "- document techniques, offsets, findings or logic clearly"
+        ),
+        dom_levers=(
+            "- encode mechanics for static/dynamic analysis, exploit development, rule crafting, "
+            "or forensic extraction\n"
+            "- preserve evidence chains: link tool output to conclusions\n"
+            "- respect operational boundaries: offline analysis, no external calls when restricted"
+        ),
+        yardstick=(
+            "Did it analyze thoroughly, identify the mechanism, craft a working artifact, validate "
+            "against requirements and document findings with tool evidence?"
+        ),
+        selection_checks=(
+            "Prefer artifacts that execute correctly, detect or exploit the target reliably, "
+            "preserve evidence lineage, respect operational boundaries, and document reasoning."
+        ),
+    ),
 }
 
 
@@ -377,6 +422,24 @@ WORKBUDDY_DOMAINS: dict[str, dict[str, str]] = {
             "deliver populated workbooks with exact requested sheets."
         ),
     },
+    "sec": {
+        "exploit": (
+            "CATEGORY LENS — EXPLOIT DEVELOPMENT. Identify the vulnerability mechanism, craft a "
+            "reliable payload, respect target constraints, and validate execution."
+        ),
+        "binary-analysis": (
+            "CATEGORY LENS — BINARY ANALYSIS. Use static tools systematically, cross-reference "
+            "findings, document observed behavior, and extract structured intelligence."
+        ),
+        "detection": (
+            "CATEGORY LENS — DETECTION RULES. Validate against benign and malicious samples, "
+            "minimize false positives, document logic, and test rule syntax."
+        ),
+        "forensics": (
+            "CATEGORY LENS — FORENSIC INVESTIGATION. Preserve evidence, trace activity across "
+            "artifacts, reconstruct timelines, and document findings with references."
+        ),
+    },
 }
 
 
@@ -384,7 +447,7 @@ def workbuddy_prompts(subset: str, *, domain: str = "") -> BenchPrompts:
     """WorkBuddy subset profile plus its role/category overlay."""
     key = _norm(subset)
     if key not in WORKBUDDY_BASES:
-        raise ValueError(f"unknown WorkBuddy subset {subset!r}; expected code, web or office")
+        raise ValueError(f"unknown WorkBuddy subset {subset!r}; expected code, web, office or sec")
     guidance = _lookup(WORKBUDDY_DOMAINS[key], domain)
     base = WORKBUDDY_BASES[key]
     return replace(base, domain_guidance=_join(base.domain_guidance, guidance))
@@ -703,10 +766,34 @@ class WbAdapter:
         return workbuddy_prompts(self.subset, domain=self.domain_of(task_id))
 
     def task_prompt(self, task_id: str) -> str:
-        """instruction.md verbatim; `leak_globs` covers the answer-key paths."""
-        return (self.subset_info.tasks_dir / task_id / "instruction.md").read_text(
-            encoding="utf-8", errors="replace"
-        )
+        """Read a task instruction, including ordered multi-step instructions."""
+        task_dir = self.subset_info.tasks_dir / task_id
+        if not task_dir.is_dir():
+            raise FileNotFoundError(f"WorkBuddy task directory not found: {task_dir}")
+        prompt_paths: list[Path] = []
+        for name in ("instruction.md", "README.md"):
+            path = task_dir / name
+            if path.is_file():
+                prompt_paths.append(path)
+                break
+        steps_dir = task_dir / "steps"
+        if steps_dir.is_dir():
+            for step_dir in sorted(path for path in steps_dir.iterdir() if path.is_dir()):
+                for name in ("instruction.md", "README.md"):
+                    path = step_dir / name
+                    if path.is_file():
+                        prompt_paths.append(path)
+                        break
+        if not prompt_paths:
+            raise FileNotFoundError(
+                f"Missing instruction.md, README.md, or steps/* prompt in {task_dir}"
+            )
+        sections = []
+        for path in prompt_paths:
+            text = path.read_text(encoding="utf-8", errors="replace").strip()
+            if text:
+                sections.append(text)
+        return "\n\n".join(sections)
 
     def task_files(self, task_id: str) -> Path | None:
         """The task directory; spec.leak_globs strips the answer key before any copy."""
