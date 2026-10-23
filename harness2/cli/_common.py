@@ -30,10 +30,6 @@ from ..core.spec import BenchmarkAdapter
 BENCHES = ("jb", "wb", "lab", "cve", "cyber", "rswe", "crust", "agentre", "binaudit")
 WB_SUBSETS = ("office", "web", "code", "sec")
 SUBSTRATES = ("oc", "cx", "omp")
-WB_OMP_ERROR = (
-    "--substrate omp runs the OMP runtime directly on this host, but WorkBuddy runs every "
-    "executor inside its Harbor containers; use oc or cx for --bench wb"
-)
 
 MODES_DEFAULT = "parallel"
 MODES_HELP = (
@@ -54,8 +50,6 @@ def make_adapter(
         raise ValueError(f"unknown bench {bench!r}; expected one of {BENCHES}")
     if substrate not in SUBSTRATES:
         raise ValueError(f"unknown substrate {substrate!r}; expected one of {SUBSTRATES}")
-    if bench == "wb" and substrate == "omp":
-        raise ValueError(WB_OMP_ERROR)
     if bench == "wb":
         if subset not in WB_SUBSETS:
             raise ValueError(f"--bench wb needs --subset from {WB_SUBSETS}, got {subset!r} ")

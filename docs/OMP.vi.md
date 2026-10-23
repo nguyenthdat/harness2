@@ -3,8 +3,8 @@
 [English](OMP.md) | Tiếng Việt
 
 Hướng dẫn này chạy Harness² với [OMP executor](SETUP.md#omp-executor) trên
-[JobBench](BENCHMARKS.md#jobbench), dùng model DeepSeek cho mọi vai, rồi đưa
-những gì học được vào OMP profile của bạn. Các lệnh chạy từ thư mục gốc của
+[JobBench](BENCHMARKS.md#jobbench) (OMP cũng hỗ trợ [WorkBuddy-Bench](BENCHMARKS.md#workbuddy-bench) và LAB),
+dùng model DeepSeek cho mọi vai, rồi đưa những gì học được vào OMP profile của bạn. Các lệnh chạy từ thư mục gốc của
 repo. Recursion budget và quy tắc resume xem ở
 [experiment guide](EXPERIMENTS.md).
 
@@ -51,8 +51,7 @@ JobBench bắt đầu mọi task từ một `AGENTS.md` chỉ có hai dòng
 
 - macOS hoặc Linux, có `git`, `npm`, Node.js 20 trở lên và
   [uv](https://docs.astral.sh/uv/getting-started/installation/). LAB cần thêm
-  Pandoc và Poppler (`brew install pandoc poppler` trên macOS); JobBench thì
-  không.
+  Pandoc và Poppler (`brew install pandoc poppler` trên macOS); JobBench thì không. WorkBuddy cần Docker.
 - `omp` có trong `PATH`, hoặc đặt `HARNESS2_OMP_BIN` trỏ tới nó. Setup không cài
   và không pin OMP.
 - Một API key DeepSeek.

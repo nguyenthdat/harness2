@@ -3,8 +3,8 @@
 English | [Tiếng Việt](OMP.vi.md)
 
 This guide runs Harness² with the [OMP executor](SETUP.md#omp-executor) on
-[JobBench](BENCHMARKS.md#jobbench), with DeepSeek models in every role, and then
-moves what it learns into your own OMP profile. Commands run from the repository
+[JobBench](BENCHMARKS.md#jobbench) (OMP also supports [WorkBuddy-Bench](BENCHMARKS.md#workbuddy-bench) and LAB),
+with DeepSeek models in every role, and then moves what it learns into your own OMP profile. Commands run from the repository
 root. Recursion budgets and resume rules are in the
 [experiment guide](EXPERIMENTS.md).
 
@@ -52,7 +52,7 @@ JobBench starts every task from a two-line `AGENTS.md`
 
 - macOS or Linux with `git`, `npm`, Node.js 20 or newer, and
   [uv](https://docs.astral.sh/uv/getting-started/installation/). LAB also needs
-  Pandoc and Poppler (`brew install pandoc poppler` on macOS); JobBench does not.
+  Pandoc and Poppler (`brew install pandoc poppler` on macOS); JobBench does not. WorkBuddy needs Docker.
 - `omp` on `PATH`, or `HARNESS2_OMP_BIN` set to its path. Setup does not install
   or pin OMP.
 - A DeepSeek API key.

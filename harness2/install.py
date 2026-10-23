@@ -31,7 +31,6 @@ PATCHES = {
     "opencode": "opencode-compat.diff",
     "job-bench-eval": "job-bench-eval-judge.diff",
     "harvey-labs": "harvey-labs-judge-vertex-anthropic.diff",
-    "workbuddy-bench": "workbuddy-bench-runtime.diff",
 }
 
 RUNNERS = (

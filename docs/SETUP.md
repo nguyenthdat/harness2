@@ -144,8 +144,8 @@ Codex runs with its sandbox disabled. Review the
 
 The OMP executor calls your installed [OMP](https://github.com/can1357/oh-my-pi)
 runtime directly: each rollout is one `omp -p --mode json` process in the task
-workspace, with no runner in between. It supports JobBench and LAB; WorkBuddy
-runs its executors inside containers, so use OpenCode or Codex there.
+workspace, with no runner in between. It supports JobBench, LAB, and WorkBuddy-Bench
+(for WorkBuddy, rollouts execute on the host against the container's workspace via `omp-harness`).
 
 | Setting | Meaning |
 |---|---|

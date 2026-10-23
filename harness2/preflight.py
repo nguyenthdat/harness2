@@ -49,6 +49,10 @@ def check(adapter, *, judge=False) -> list[str]:
         OpencodeSubstrate().preflight,
     ]
     adapter_preflight = getattr(adapter, "preflight", None)
+    if adapter.substrate.name == "omp":
+        probe("OMP runtime", [config.OMP_BIN, "--version"], remedy="install omp or set HARNESS2_OMP_BIN")
+        if adapter_preflight is None:
+            validators.append(adapter.substrate.preflight)
     if adapter_preflight is not None:
         validators.append(adapter_preflight)
     for validate in validators:
@@ -145,7 +149,7 @@ def check(adapter, *, judge=False) -> list[str]:
                 repo / ".venv/bin/python",
                 "-c",
                 "import harbor; from workbuddy_bench.runner.harness_adapters import HARNESS_ADAPTERS; "
-                "assert all(k in HARNESS_ADAPTERS for k in ('opencode', 'oc-harness', 'codex-harness'))",
+                "assert all(k in HARNESS_ADAPTERS for k in ('opencode', 'oc-harness', 'codex-harness', 'omp-harness'))",
             ],
             cwd=repo,
         )

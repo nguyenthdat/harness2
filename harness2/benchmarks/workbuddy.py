@@ -43,12 +43,13 @@ from ..core.spec import BenchPrompts, BenchSpec, resolve_channel_model
 from ..substrate import opencode as OC
 from ..substrate.base import Install, RunRequest
 from ..substrate.codex import CODEX_SURFACE, CodexSubstrate
+from ..substrate.omp import OmpSubstrate
 from ..substrate.opencode import OPENCODE_SURFACE, OpencodeSubstrate
 from . import wb_render as RENDER
 from .tasks import discover, select
 
 SCOREABLE = frozenset({"code", "web", "office"})
-SUBSTRATES = ("oc", "cx")
+SUBSTRATES = ("oc", "cx", "omp")
 
 _BASE_LOCK = threading.Lock()
 _BASE_DONE: set[Path] = set()
@@ -63,6 +64,9 @@ def _harness_oc(fork: bool) -> str:
 def _harness_cx() -> str:
     return f"codex-harness/{config.WB_CX_HARNESS_VER}"
 
+
+def _harness_omp() -> str:
+    return "omp-harness/1.0.0"
 
 @dataclass(frozen=True)
 class Subset:
@@ -573,7 +577,7 @@ def _job_yaml(
                 hp["prompt_template_path"] = str(composed.resolve())
         hp_lines = "\n".join(f"  {key}: {json.dumps(val)}" for key, val in sorted(hp.items()))
         extra = f"harness_params_override:\n{hp_lines}\n"
-    else:
+    elif substrate == "cx":
         harness = _harness_cx()
         hp = {"CODEX_MODEL": config.SOLVER_MODEL_CX}
         if ws is not None:
@@ -597,6 +601,13 @@ def _job_yaml(
             f"  CODEX_BRIDGE_URL: {json.dumps(config.CODEX_CONTAINER_URL)}\n"
             f"{hp_block}"
         )
+    else:
+        harness = _harness_omp()
+        hp = {"OMP_MODEL": config.SOLVER_MODEL_OMP}
+        if ws is not None:
+            hp["WB_HARNESS_WS"] = str(ws.resolve())
+        hp_lines = "\n".join(f"  {key}: {json.dumps(val)}" for key, val in sorted(hp.items()))
+        extra = f"harness_params_override:\n{hp_lines}\n"
     judge = (
         f"llm_judge_override:\n  model: {subset.llm_judge_model}\n"
         if subset.llm_judge_model
@@ -719,12 +730,12 @@ def spec_for(subset: str, substrate: str) -> BenchSpec:
     return BenchSpec(
         name=f"wb-{subset}",
         runs_root=config.RUNS / "wb" / subset,
-        install_mode="home_dir_jinja" if substrate == "oc" else "codex_root",
+        install_mode="home_dir_jinja" if substrate == "oc" else ("codex_root" if substrate == "cx" else "omp_root"),
         prompts=workbuddy_prompts(subset),
         channels={"proposer": channel, "selector": channel},
         domain_word="category",
         leak_globs=s.leak_globs,
-        allow_subagents=(substrate == "oc"),
+        allow_subagents=(substrate in ("oc", "omp")),
         obs_trunc=50_000,
         proposer_deliverables=("names" if subset == "code" else "contents"),
         state_deliverable=True,
@@ -745,11 +756,12 @@ class WbAdapter:
         self.subset = subset
         self.subset_info = SUBSETS[subset]
         self.spec = spec_for(subset, substrate)
-        self.substrate = (
-            OpencodeSubstrate(launcher=self._launch)
-            if substrate == "oc"
-            else CodexSubstrate(launcher=self._launch)
-        )
+        if substrate == "oc":
+            self.substrate = OpencodeSubstrate(launcher=self._launch)
+        elif substrate == "cx":
+            self.substrate = CodexSubstrate(launcher=self._launch)
+        else:
+            self.substrate = OmpSubstrate(launcher=self._launch)
 
     def tasks(self, split: str = "all") -> list[str]:
         return select(
@@ -827,7 +839,7 @@ class WbAdapter:
         return {
             "solver": config.SOLVER_MODEL_OC
             if self.substrate.name == "oc"
-            else config.SOLVER_MODEL_CX,
+            else (config.SOLVER_MODEL_CX if self.substrate.name == "cx" else config.SOLVER_MODEL_OMP),
             "oc_ver": config.WB_OC_HARNESS_VER,
             "connection": config.WB_MODEL_CONNECTION,
         }
@@ -864,6 +876,8 @@ class WbAdapter:
         label = self._label(req.run_ids[0], k)
         if self.substrate.name == "cx":
             self.substrate.preflight(require_dist=True, require_bridge=True)
+        elif self.substrate.name == "omp":
+            self.substrate.preflight()
 
         def _have(task_id: str) -> int:
             return sum(
@@ -1034,7 +1048,7 @@ class WbAdapter:
         slugs = (
             [_harness_oc(fork=False), _harness_oc(fork=True)]
             if self.substrate.name == "oc"
-            else [_harness_cx()]
+            else ([_harness_cx()] if self.substrate.name == "cx" else [_harness_omp()])
         )
         for slug in slugs:
             family, _, ver = slug.partition("/")

@@ -123,3 +123,4 @@ the improver never receives verifier output. Missing verifier results remain
 unscored. Runs live under `runs/wb/<subset>/`.
 
 For Codex, start the bridge with `harness2-bridge --host 0.0.0.0` so that the containers can reach it.
+For OMP, install `omp` on the host and run `harness2-setup wb --substrate omp`; rollouts execute host-side against the container's workspace via `omp-harness`.

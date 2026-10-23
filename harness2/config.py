@@ -103,7 +103,7 @@ JUDGE_MODEL = env("HARNESS2_JUDGE_MODEL", "")
 
 DEPENDENCY_PINS = {
     "job-bench-eval": "fa03a17f9ff662f136798a274e10011c3aa00fd0",
-    "workbuddy-bench": "b516950be5b56eb3be406c2f76ee1c5111dcb57f",
+    "workbuddy-bench": "f592660f3300220cf0a67a050242ef709eae4241",
     "harvey-labs": "b58a28ae9fde5ee4b810e53b4fd0a1915325a35d",
     "opencode": "23fb5e0516c99ac04a1aa46c193efda2e1b9bb24",
     "cybench": "ca483c6443f17a20ba7d6bac3d274859a1721e51",
@@ -115,7 +115,7 @@ DEPENDENCY_PINS = {
 }
 DEPENDENCY_ORIGINS = {
     "job-bench-eval": "https://github.com/Job-Bench/job-bench-eval.git",
-    "workbuddy-bench": "https://github.com/Tencent/workbuddy-bench.git",
+    "workbuddy-bench": "https://github.com/nguyenthdat/workbuddy-bench.git",
     "harvey-labs": "https://github.com/harveyai/harvey-labs.git",
     "opencode": "https://github.com/anomalyco/opencode.git",
     "cybench": "https://github.com/andyzorigin/cybench.git",
@@ -207,8 +207,8 @@ WB_WEB_JUDGE = "harness2/judge"
 WB_RENDER_PY = sys.executable
 WB_OC_HARNESS_VER = "1.14.18"
 WB_CX_HARNESS_VER = CODEX_VERSION
-WB_MAX_JOBS = {"oc": 1, "cx": 1}
-WB_MAX_TRIALS = {"oc": 2, "cx": 2}
+WB_MAX_JOBS = {"oc": 1, "cx": 1, "omp": 1}
+WB_MAX_TRIALS = {"oc": 2, "cx": 2, "omp": 2}
 WB_MODEL_CONNECTION = "local_proxy"
 
 DEFAULT_PROPOSER_CHANNEL = "opencode"
