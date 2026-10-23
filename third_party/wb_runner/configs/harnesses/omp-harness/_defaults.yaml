@@ -1,0 +1,8 @@
+# OMP CLI agent running on host against container /workspace.
+# The job-local Chat Completions proxy serves the benchmark judge separately.
+harness:
+  name: omp-harness
+  import_path: "workbuddy_bench.agents.omp_harness_agent:OmpHarnessAgent"
+  protocol: openai
+  params:
+    OMP_PROFILE: "harness2"

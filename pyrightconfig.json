@@ -1,0 +1,14 @@
+{
+  "include": ["harness2", "tests", "scripts", "third_party/wb_runner"],
+  "exclude": ["**/__pycache__", "**/node_modules", "**/.*"],
+  "pythonVersion": "3.12",
+  "executionEnvironments": [
+    {
+      "root": "third_party/wb_runner",
+      "extraPaths": [
+        "dependencies/workbuddy-bench/src",
+        "dependencies/workbuddy-bench/.venv/lib/python3.12/site-packages",
+      ],
+    },
+  ],
+}

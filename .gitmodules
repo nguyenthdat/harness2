@@ -1,3 +1,40 @@
 [submodule "dependencies/workbuddy-bench"]
 	path = dependencies/workbuddy-bench
 	url = https://github.com/nguyenthdat/workbuddy-bench.git
+	ignore = dirty
+[submodule "dependencies/job-bench-eval"]
+	path = dependencies/job-bench-eval
+	url = https://github.com/Job-Bench/job-bench-eval.git
+	ignore = dirty
+[submodule "dependencies/harvey-labs"]
+	path = dependencies/harvey-labs
+	url = https://github.com/harveyai/harvey-labs.git
+	ignore = dirty
+[submodule "dependencies/opencode"]
+	path = dependencies/opencode
+	url = https://github.com/anomalyco/opencode.git
+	ignore = dirty
+[submodule "dependencies/cybench"]
+	path = dependencies/cybench
+	url = https://github.com/andyzorigin/cybench.git
+	ignore = dirty
+[submodule "dependencies/cve-bench"]
+	path = dependencies/cve-bench
+	url = https://github.com/uiuc-kang-lab/cve-bench.git
+	ignore = dirty
+[submodule "dependencies/Rust-SWE-Bench"]
+	path = dependencies/Rust-SWE-Bench
+	url = https://github.com/GhabiX/Rust-SWE-Bench.git
+	ignore = dirty
+[submodule "dependencies/CRUST-bench"]
+	path = dependencies/CRUST-bench
+	url = https://github.com/anirudhkhatry/CRUST-bench.git
+	ignore = dirty
+[submodule "dependencies/AgentRE-Bench"]
+	path = dependencies/AgentRE-Bench
+	url = https://github.com/agentrebench/AgentRE-Bench.git
+	ignore = dirty
+[submodule "dependencies/BinaryAudit"]
+	path = dependencies/BinaryAudit
+	url = https://github.com/QuesmaOrg/BinaryAudit.git
+	ignore = dirty
