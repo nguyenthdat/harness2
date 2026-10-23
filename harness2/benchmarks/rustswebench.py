@@ -105,7 +105,7 @@ class RustSWEBenchAdapter:
         return select(discover("rswe"), split, self.split_file, benchmark="rswe")
 
     def domain_of(self, task_id: str) -> str:
-        return task_id.split("__", 1)[0] if "__" in task_id else task_id
+        return discover("rswe").get(task_id, task_id.split("__", 1)[0] if "__" in task_id else task_id)
 
     def reference_domain_order(self) -> list[str]:
         return sorted(set(discover("rswe").values()))

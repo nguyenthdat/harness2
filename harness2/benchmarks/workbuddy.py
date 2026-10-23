@@ -43,7 +43,7 @@ from ..core.spec import BenchPrompts, BenchSpec, resolve_channel_model
 from ..substrate import opencode as OC
 from ..substrate.base import Install, RunRequest
 from ..substrate.codex import CODEX_SURFACE, CodexSubstrate
-from ..substrate.omp import OmpSubstrate
+from ..substrate.omp import OMP_SURFACE, OmpSubstrate
 from ..substrate.opencode import OPENCODE_SURFACE, OpencodeSubstrate
 from . import wb_render as RENDER
 from .tasks import discover, select
@@ -603,11 +603,18 @@ def _job_yaml(
         )
     else:
         harness = _harness_omp()
-        hp = {"OMP_MODEL": config.SOLVER_MODEL_OMP}
+        hp = {
+            "OMP_MODEL": config.SOLVER_MODEL_OMP,
+            "OMP_PROFILE": config.OMP_PROFILE,
+        }
         if ws is not None:
             hp["WB_HARNESS_WS"] = str(ws.resolve())
         hp_lines = "\n".join(f"  {key}: {json.dumps(val)}" for key, val in sorted(hp.items()))
-        extra = f"harness_params_override:\n{hp_lines}\n"
+        extra = (
+            "agent_user: root\n"
+            "verifier_user: root\n"
+            f"harness_params_override:\n{hp_lines}\n"
+        )
     judge = (
         f"llm_judge_override:\n  model: {subset.llm_judge_model}\n"
         if subset.llm_judge_model
@@ -962,7 +969,11 @@ class WbAdapter:
         return RENDER.body_chars(Path(run_dir), self.subset) >= 200
 
     def trajectory_path(self, run_dir: Path) -> Path:
-        stream = "oc-output.txt" if self.substrate.name == "oc" else "codex-output.jsonl"
+        stream = (
+            "oc-output.txt"
+            if self.substrate.name == "oc"
+            else ("codex-output.jsonl" if self.substrate.name == "cx" else "omp-output.jsonl")
+        )
         return Path(run_dir) / "agent" / stream
 
     def trajectory(self, run_dir: Path, *, obs_trunc: int) -> str:
@@ -1009,8 +1020,9 @@ class WbAdapter:
                         stubs=True,
                     )
                 else:
+                    surface = CODEX_SURFACE if self.substrate.name == "cx" else OMP_SURFACE
                     HT.write_tree(
-                        CODEX_SURFACE,
+                        surface,
                         {
                             "AGENTS.md": (
                                 "Follow the task instructions and complete the requested work in the "

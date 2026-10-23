@@ -98,9 +98,15 @@ def check(adapter, *, judge=False) -> list[str]:
     executors = (config.SOLVER_MODEL_OC, config.IMPROVER_MODEL) + (
         (config.SOLVER_MODEL_OMP,) if adapter.substrate.name == "omp" else ()
     )
-    if any(m.startswith("google-vertex") for m in executors) or (
-        judge and (bench == "wb" or config.JUDGE_MODEL.startswith(("claude", "gemini")))
-    ):
+    omp_non_vertex = adapter.substrate.name == "omp" and not config.SOLVER_MODEL_OMP.startswith(
+        "google-vertex/"
+    )
+    needs_adc = any(m.startswith("google-vertex") for m in executors) or (
+        judge
+        and (bench == "wb" or config.JUDGE_MODEL.startswith(("claude", "gemini")))
+        and not omp_non_vertex
+    )
+    if needs_adc:
         probe(
             "Google Application Default Credentials",
             ["gcloud", "auth", "application-default", "print-access-token"],
@@ -143,23 +149,35 @@ def check(adapter, *, judge=False) -> list[str]:
                 [config.WB_RENDER_PY, "-c", "import openpyxl, pptx"],
                 remedy="install 'harness2[render]' in the main environment",
             )
+        harness_name = {
+            "oc": "opencode",
+            "cx": "codex-harness",
+            "omp": "omp-harness",
+        }.get(adapter.substrate.name, adapter.substrate.name)
         probe(
             "WorkBuddy runtime",
             [
                 repo / ".venv/bin/python",
                 "-c",
                 "import harbor; from workbuddy_bench.runner.harness_adapters import HARNESS_ADAPTERS; "
-                "assert all(k in HARNESS_ADAPTERS for k in ('opencode', 'oc-harness', 'codex-harness', 'omp-harness'))",
+                f"assert {harness_name!r} in HARNESS_ADAPTERS",
             ],
             cwd=repo,
         )
-        for role, expected in (
-            ("solver", config.SOLVER_MODEL_OC.removeprefix("google-vertex/")),
-            ("judge", config.JUDGE_MODEL),
-        ):
+        if adapter.substrate.name == "omp" and not config.SOLVER_MODEL_OC.startswith("google-vertex/"):
+            expected_models = {
+                "solver": config.WB_MODEL_NAME,
+                "judge": config.JUDGE_MODEL,
+            }
+        else:
+            expected_models = {
+                "solver": "google/" + config.SOLVER_MODEL_OC.removeprefix("google-vertex/"),
+                "judge": "google/" + config.JUDGE_MODEL,
+            }
+        for role, expected in expected_models.items():
             path = repo / "configs/models/harness2" / f"{role}.yaml"
             try:
-                if json.loads(path.read_text())["model"]["name"] != "google/" + expected:
+                if json.loads(path.read_text())["model"]["name"] != expected:
                     errors.append(f"WorkBuddy {role} configuration is stale; rerun setup")
             except (OSError, ValueError, KeyError, TypeError):
                 errors.append(f"WorkBuddy {role} configuration missing; rerun setup")

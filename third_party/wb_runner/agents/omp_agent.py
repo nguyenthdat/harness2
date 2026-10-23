@@ -77,6 +77,18 @@ class OmpAgent(BaseInstalledAgent):
             await environment.download_dir("/workspace", local_ws)
             await self._run_omp(instruction, local_ws)
             await environment.upload_dir(local_ws, "/workspace")
+            run_user = getattr(environment, "default_user", None)
+            if run_user not in (None, "", "root", 0, "0"):
+                import shlex
+                u = shlex.quote(str(run_user))
+                await self.exec_as_root(
+                    environment,
+                    command=(
+                        f"chown -R {u} /workspace && "
+                        f"mkdir -p /logs/verifier && chmod -R a+rwx /logs/verifier && "
+                        f"(chmod -R a+rX /tests 2>/dev/null || true)"
+                    ),
+                )
         finally:
             shutil.rmtree(local_ws, ignore_errors=True)
         self.populate_context_post_run(context)

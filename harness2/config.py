@@ -103,7 +103,7 @@ JUDGE_MODEL = env("HARNESS2_JUDGE_MODEL", "")
 
 DEPENDENCY_PINS = {
     "job-bench-eval": "fa03a17f9ff662f136798a274e10011c3aa00fd0",
-    "workbuddy-bench": "f592660f3300220cf0a67a050242ef709eae4241",
+    "workbuddy-bench": "625b2233093ae4f23e76be28c1f341d41cc70373",
     "harvey-labs": "b58a28ae9fde5ee4b810e53b4fd0a1915325a35d",
     "opencode": "23fb5e0516c99ac04a1aa46c193efda2e1b9bb24",
     "cybench": "ca483c6443f17a20ba7d6bac3d274859a1721e51",
@@ -201,6 +201,10 @@ CODEX_HOME_DIR = DEPENDENCIES / "codex" / "home"
 SOLVER_MODEL_OMP = env("HARNESS2_OMP_MODEL", SOLVER_MODEL_OC)
 OMP_BIN = env("HARNESS2_OMP_BIN", "omp")
 OMP_PROFILE = env("HARNESS2_OMP_PROFILE", "harness2")
+WB_MODEL_NAME = env("HARNESS2_WB_MODEL_NAME", SOLVER_MODEL_OMP.rsplit("/", 1)[-1])
+WB_BACKEND_URL = env("HARNESS2_WB_BACKEND_URL", "")
+WB_BACKEND_KEY_ENV = env("HARNESS2_WB_BACKEND_KEY_ENV", "DEEPSEEK_API_KEY")
+WB_BACKEND_URL_ENV = "HARNESS2_WB_BACKEND_URL"
 
 WB_SOLVER_MODEL = "harness2/solver"
 WB_WEB_JUDGE = "harness2/judge"

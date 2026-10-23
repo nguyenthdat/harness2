@@ -115,7 +115,7 @@ def main(argv=None):
                 dry_run=dry,
             )
         elif args.benchmark == "wb":
-            install.workbuddy_models(dry_run=dry)
+            install.workbuddy_models(dry_run=dry, substrate=args.substrate)
             subsets = [args.subset] if args.subset else ["office", "web", "code", "sec"]
             install.run(
                 ["bash", "scripts/dataset/fetch-dataset.sh", *subsets], cwd=repo, dry_run=dry

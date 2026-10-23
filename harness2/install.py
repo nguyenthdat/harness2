@@ -137,20 +137,54 @@ def overlays(name: str, *, dry_run=False):
         pairs = [
             (assets / "wb_runner" / "agents", repo / "src" / "workbuddy_bench" / "agents"),
             (assets / "wb_runner" / "configs" / "harnesses", repo / "configs" / "harnesses"),
+            (assets / "wb_runner" / "harness_adapters.py", repo / "src" / "workbuddy_bench" / "runner" / "harness_adapters.py"),
         ]
     for source, dest in pairs:
         print(f"Copy runner assets: {source} -> {dest}", flush=True)
         if not dry_run:
-            shutil.copytree(
-                source,
-                dest,
-                dirs_exist_ok=True,
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "PROVENANCE.md"),
+            if source.is_dir():
+                shutil.copytree(
+                    source,
+                    dest,
+                    dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "PROVENANCE.md"),
+                )
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, dest)
+
+
+def workbuddy_models(*, dry_run=False, substrate="oc"):
+    """Generate WorkBuddy routes for the selected executor without writing credentials."""
+    if substrate == "omp" and not config.SOLVER_MODEL_OC.startswith("google-vertex/"):
+        if not config.WB_BACKEND_URL:
+            raise config.ConfigError(
+                "Set HARNESS2_WB_BACKEND_URL for WorkBuddy OMP local-proxy model routing"
             )
+        payloads = {
+            "solver": {
+                "name": config.WB_MODEL_NAME,
+                "protocols": ["openai"],
+                "backend_url_env": config.WB_BACKEND_URL_ENV,
+                "backend_key_env": config.WB_BACKEND_KEY_ENV,
+                "params": {"max_output_tokens": 64000},
+            },
+            "judge": {
+                "name": config.JUDGE_MODEL,
+                "protocols": ["openai"],
+                "backend_url_env": config.WB_BACKEND_URL_ENV,
+                "backend_key_env": config.WB_BACKEND_KEY_ENV,
+                "params": {"max_output_tokens": 16384},
+            },
+        }
+        for role, model in payloads.items():
+            path = config.wb_repo() / "configs" / "models" / "harness2" / f"{role}.yaml"
+            print(f"Configure WorkBuddy OMP {role}: {model['name']}", flush=True)
+            if not dry_run:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps({"model": model}, indent=2) + "\n", encoding="utf-8")
+        return
 
-
-def workbuddy_models(*, dry_run=False):
-    """Generate the two Vertex routes from the user's model IDs, never credentials."""
     solver = config.SOLVER_MODEL_OC.removeprefix("google-vertex/")
     judge = config.JUDGE_MODEL
     problem = ""
@@ -158,8 +192,8 @@ def workbuddy_models(*, dry_run=False):
         "gemini"
     ):
         problem = (
-            "WorkBuddy setup requires a google-vertex/gemini... executor "
-            "and a gemini... judge; choose IDs available in your project"
+            "WorkBuddy setup requires a google-vertex/gemini... executor and a gemini... judge; "
+            "choose IDs available in your project"
         )
     elif not config.VERTEX_PROJECT:
         problem = "Set GOOGLE_CLOUD_PROJECT for WorkBuddy's Vertex routes"
@@ -187,7 +221,6 @@ def workbuddy_models(*, dry_run=False):
         print(f"Configure WorkBuddy {role}: {model}", flush=True)
         if not dry_run:
             path.parent.mkdir(parents=True, exist_ok=True)
-
             path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
