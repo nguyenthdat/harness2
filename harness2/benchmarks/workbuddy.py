@@ -606,6 +606,7 @@ def _job_yaml(
         hp = {
             "OMP_MODEL": config.SOLVER_MODEL_OMP,
             "OMP_PROFILE": config.OMP_PROFILE,
+            "OMP_BIN": config.OMP_BIN,
         }
         if ws is not None:
             hp["WB_HARNESS_WS"] = str(ws.resolve())
@@ -843,14 +844,20 @@ class WbAdapter:
 
     def _cell_identity(self) -> dict:
         """What makes two rollouts of one label the same rollout, beyond the harness."""
+        if self.substrate.name == "omp":
+            return {
+                "substrate": "omp",
+                "solver": config.SOLVER_MODEL_OMP,
+                "profile": config.OMP_PROFILE,
+                "connection": config.WB_MODEL_CONNECTION,
+            }
         return {
             "solver": config.SOLVER_MODEL_OC
             if self.substrate.name == "oc"
-            else (config.SOLVER_MODEL_CX if self.substrate.name == "cx" else config.SOLVER_MODEL_OMP),
+            else config.SOLVER_MODEL_CX,
             "oc_ver": config.WB_OC_HARNESS_VER,
             "connection": config.WB_MODEL_CONNECTION,
         }
-
     def _identity_matches(self, trial: Path) -> bool:
         """True when `trial`'s marker names this cell's executor identity."""
         m = RM.read_mark(Path(trial)) or {}

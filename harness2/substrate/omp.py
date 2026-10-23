@@ -27,7 +27,7 @@ executor model. The session transcript lands beside the event stream, inside the
 """
 
 from __future__ import annotations
-
+import asyncio
 import contextlib
 import json
 import os
@@ -111,8 +111,43 @@ _DROPPED_ENV = (
     "PI_SMOL_MODEL",
     "PI_SLOW_MODEL",
     "PI_PLAN_MODEL",
+    "PI_BLOCKED_AGENT",
 )
-_CHAT_ROLES = ("default", "smol", "slow", "plan", "task")
+_BUILTIN_CHAT_ROLES = (
+    "default",
+    "smol",
+    "slow",
+    "plan",
+    "task",
+    "advisor",
+    "tiny",
+    "commit",
+    "vision",
+)
+_SPECIALIST_ROLES = (
+    "rust",
+    "python",
+    "architect",
+    "implementer",
+    "debugger",
+    "qa",
+    "scout",
+    "research",
+    "mechanic",
+    "devops",
+    "designer",
+    "codebase-memory",
+)
+_BUNDLED_AGENTS = (
+    "task",
+    "sonic",
+    "scout",
+    "reviewer",
+    "security-reviewer",
+    "seance",
+)
+_MODEL_KIND_ROLES = frozenset({"web", "image", "speech", "dictation"})
+_CHAT_ROLES = _BUILTIN_CHAT_ROLES
 _THINKING_LEVELS = frozenset({"off", "minimal", "low", "medium", "high", "xhigh", "max", "auto"})
 _KILL_GRACE = 120
 _TIME_LIMIT_EVENT = "harness2_time_limit"
@@ -120,15 +155,75 @@ _SUBAGENT = re.compile(r"sub_agents/([a-z0-9][a-z0-9_\-]*)/AGENT\.md")
 _FRONTMATTER = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 
 
-def overlay(model: str, agents: Iterable[str] = ()) -> dict:
+def _parse_yaml_subkeys(text: str, section: str) -> list[str]:
+    in_sec = False
+    keys = []
+    sec_indent = None
+    for line in text.splitlines():
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        m = re.match(r"^(\s*)" + re.escape(section) + r":", line)
+        if m:
+            in_sec = True
+            sec_indent = len(m.group(1))
+            continue
+        if in_sec:
+            indent = len(line) - len(line.lstrip())
+            if indent <= sec_indent:
+                break
+            key_m = re.match(r"^\s*([a-zA-Z0-9_\-]+)\s*:", line)
+            if key_m:
+                keys.append(key_m.group(1))
+    return keys
+
+
+def _discover_profile_roles_and_agents(profile: str | None) -> tuple[set[str], set[str]]:
+    """Inspect the named profile (and default profile) to discover custom modelRoles and overrides."""
+    roles: set[str] = set()
+    agents: set[str] = set()
+    prof = profile or config.OMP_PROFILE
+    paths_to_check: list[Path] = []
+    if prof and prof != "default":
+        prof_agent = Path.home() / ".omp" / "profiles" / prof / "agent"
+        paths_to_check.append(prof_agent / "config.yml")
+        paths_to_check.append(prof_agent / "config.yaml")
+        agent_dir = prof_agent / "agents"
+        if agent_dir.is_dir():
+            agents.update(p.stem for p in agent_dir.glob("*.md"))
+    default_agent = Path.home() / ".omp" / "agent"
+    paths_to_check.append(default_agent / "config.yml")
+    paths_to_check.append(default_agent / "config.yaml")
+    def_agent_dir = default_agent / "agents"
+    if def_agent_dir.is_dir():
+        agents.update(p.stem for p in def_agent_dir.glob("*.md"))
+
+    for cfg_path in paths_to_check:
+        try:
+            if cfg_path.is_file():
+                txt = cfg_path.read_text(encoding="utf-8", errors="replace")
+                roles.update(_parse_yaml_subkeys(txt, "modelRoles"))
+                agents.update(_parse_yaml_subkeys(txt, "agentModelOverrides"))
+        except OSError:
+            continue
+    return roles, agents
+
+
+def overlay(model: str, agents: Iterable[str] = (), profile: str | None = None) -> dict:
     """The `--config` settings overlay for one rollout; it outranks profile and project settings.
 
     Off: what adds model calls outside the harness (advisor, recap, autolearn, memory, cache
     warming) or carries operator state in (user-level `~/.agents` skills). Pinned: every chat
-    role and every harness agent to the executor model, with model fallback off, so a rollout
-    never changes model; blocking subagents, so delegated work finishes inside the print-mode
-    run; yolo approvals, since nobody is there to answer a prompt.
+    role, specialist role, profile role, bundled agent, and harness agent to the executor model,
+    with model fallback off, so a rollout never changes model; blocking subagents, so delegated
+    work finishes inside the print-mode run; yolo approvals, since nobody is there to answer a prompt.
     """
+    prof_roles, prof_agents = _discover_profile_roles_and_agents(profile)
+    all_roles = set(_BUILTIN_CHAT_ROLES) | set(_SPECIALIST_ROLES) | prof_roles
+    pinned_roles = {r: model for r in sorted(all_roles) if r not in _MODEL_KIND_ROLES}
+
+    all_agents = set(_BUNDLED_AGENTS) | set(agents) | prof_agents
+    pinned_agents = {a: model for a in sorted(all_agents)}
+
     return {
         "advisor": {"enabled": False},
         "autolearn": {"enabled": False},
@@ -138,12 +233,11 @@ def overlay(model: str, agents: Iterable[str] = ()) -> dict:
         "skills": {"enableAgentsUser": False},
         "providers": {"cacheWarming": "off"},
         "retry": {"modelFallback": False},
-        "modelRoles": dict.fromkeys(_CHAT_ROLES, model),
-        "task": {"agentModelOverrides": dict.fromkeys(agents, model)},
+        "modelRoles": pinned_roles,
+        "task": {"agentModelOverrides": pinned_agents},
         "async": {"enabled": False},
         "tools": {"approvalMode": "yolo"},
     }
-
 
 def agent_file(name: str, body: str) -> str:
     """`sub_agents/<name>/AGENT.md` as OMP's flat task-agent file `.omp/agents/<name>.md`.
@@ -213,17 +307,32 @@ def _version(binary: str) -> str:
     return line
 
 
-def _kill_group(proc: subprocess.Popen) -> None:
+def _kill_group(proc: subprocess.Popen, grace_s: float = 5.0) -> None:
     """SIGTERM the rollout's process group so OMP can close its stream, then SIGKILL the rest."""
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, signal.SIGTERM)
     with contextlib.suppress(subprocess.TimeoutExpired):
-        proc.wait(timeout=30)
+        proc.wait(timeout=grace_s)
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(proc.pid, signal.SIGKILL)
     if proc.poll() is None:
         proc.kill()
     proc.wait()
+
+
+async def _kill_group_async(proc: asyncio.subprocess.Process, grace_s: float = 5.0) -> None:
+    """Async SIGTERM process group, wait for OMP to exit, then SIGKILL remaining children."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGTERM)
+    with contextlib.suppress(asyncio.TimeoutError, Exception):
+        await asyncio.wait_for(proc.wait(), timeout=grace_s)
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(proc.pid, signal.SIGKILL)
+    if proc.returncode is None:
+        with contextlib.suppress(Exception):
+            proc.kill()
+    with contextlib.suppress(Exception):
+        await proc.wait()
 
 
 class OmpSubstrate:
@@ -306,11 +415,11 @@ class OmpSubstrate:
         """The runtime identity a run records: version and profile, e.g. 'omp/18.12.3 @harness2'."""
         return f"{_version(self.binary())} @{config.OMP_PROFILE}"
 
-    def env(self, base: Mapping[str, str]) -> dict[str, str]:
+    def env(self, base: Mapping[str, str], profile: str | None = None) -> dict[str, str]:
         """The rollout environment: `base` minus `_DROPPED_ENV`, with the rollout profile
         selected, so an `omp` the agent itself starts resolves the same profile."""
         env = {k: v for k, v in base.items() if k not in _DROPPED_ENV}
-        env["OMP_PROFILE"] = config.OMP_PROFILE
+        env["OMP_PROFILE"] = profile or config.OMP_PROFILE
         return env
 
     def argv(
@@ -322,12 +431,16 @@ class OmpSubstrate:
         thinking: str,
         session_dir: Path,
         overlay_file: Path,
+        profile: str | None = None,
+        binary: str | None = None,
     ) -> list[str]:
         """One headless turn: the prompt arrives on stdin, events leave on stdout as NDJSON."""
+        bin_path = binary or self.binary()
+        prof = profile or config.OMP_PROFILE
         return [
-            self.binary(),
+            bin_path,
             "--profile",
-            config.OMP_PROFILE,
+            prof,
             "-p",
             "--mode",
             "json",
@@ -358,6 +471,8 @@ class OmpSubstrate:
         stream: Path,
         thinking: str = "high",
         env: Mapping[str, str] | None = None,
+        profile: str | None = None,
+        binary: str | None = None,
     ) -> OmpRun:
         """Run one rollout: the OMP runtime itself, in `workspace`, under the rollout profile.
 
@@ -377,8 +492,9 @@ class OmpSubstrate:
         stream.parent.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(session_dir, ignore_errors=True)  # the stream is rewritten; so is the session
         agents = sorted(p.stem for p in (workspace / ".omp" / "agents").glob("*.md"))
+        prof = profile or config.OMP_PROFILE
         overlay_path.write_text(
-            json.dumps(overlay(model, agents), indent=2) + "\n", encoding="utf-8"
+            json.dumps(overlay(model, agents, profile=prof), indent=2) + "\n", encoding="utf-8"
         )
         argv = self.argv(
             workspace,
@@ -387,8 +503,10 @@ class OmpSubstrate:
             thinking=thinking,
             session_dir=session_dir,
             overlay_file=overlay_path,
+            profile=prof,
+            binary=binary,
         )
-        child_env = self.env(os.environ if env is None else env)
+        child_env = self.env(os.environ if env is None else env, profile=prof)
         killed = False
         t0 = time.monotonic()
         with stream.open("wb") as out, stderr_path.open("wb") as err:
@@ -402,7 +520,10 @@ class OmpSubstrate:
                 start_new_session=True,
             )
             try:
-                proc.communicate(prompt.encode("utf-8"), timeout=int(timeout) + _KILL_GRACE)
+                proc.communicate(
+                    prompt.encode("utf-8"),
+                    timeout=(int(timeout) + _KILL_GRACE) if timeout is not None else None,
+                )
             except subprocess.TimeoutExpired:
                 killed = True
             finally:
@@ -410,6 +531,82 @@ class OmpSubstrate:
         wall = time.monotonic() - t0
         # A turn that OMP itself stops at --max-time ends like a finished one (agent_end, exit
         # 0), so only the clock tells them apart; the stream records which it was.
+        timed_out = killed or wall >= int(timeout)
+        if timed_out:
+            with stream.open("a", encoding="utf-8") as fh:
+                event = {"type": _TIME_LIMIT_EVENT, "limit_s": int(timeout), "killed": killed}
+                fh.write(json.dumps(event) + "\n")
+        return OmpRun(
+            exit_code=None if killed else proc.returncode,
+            timed_out=timed_out,
+            wall_s=round(wall, 1),
+            stream=stream,
+            stderr=stderr_path,
+        )
+
+    async def run_async(
+        self,
+        prompt: str,
+        workspace: Path,
+        *,
+        model: str,
+        timeout: int,
+        stream: Path,
+        thinking: str = "high",
+        env: Mapping[str, str] | None = None,
+        profile: str | None = None,
+        binary: str | None = None,
+    ) -> OmpRun:
+        """Asynchronously run one rollout with clean process-group termination and cancellation safety."""
+        if not model.strip():
+            raise ValueError("OmpSubstrate.run_async needs an explicit provider/model selector")
+        workspace = Path(workspace).absolute()
+        stream = Path(stream)
+        stderr_path, overlay_path, session_dir = sidecars(stream)
+        stream.parent.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(session_dir, ignore_errors=True)
+        agents = sorted(p.stem for p in (workspace / ".omp" / "agents").glob("*.md"))
+        prof = profile or config.OMP_PROFILE
+        overlay_path.write_text(
+            json.dumps(overlay(model, agents, profile=prof), indent=2) + "\n", encoding="utf-8"
+        )
+        argv = self.argv(
+            workspace,
+            model=model,
+            timeout=timeout,
+            thinking=thinking,
+            session_dir=session_dir,
+            overlay_file=overlay_path,
+            profile=prof,
+            binary=binary,
+        )
+        child_env = self.env(os.environ if env is None else env, profile=prof)
+        killed = False
+        t0 = time.monotonic()
+        with stream.open("wb") as out, stderr_path.open("wb") as err:
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                cwd=str(workspace),
+                env=child_env,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=out,
+                stderr=err,
+                start_new_session=True,
+            )
+            try:
+                effective_timeout = (int(timeout) + _KILL_GRACE) if timeout is not None else None
+                if effective_timeout is not None:
+                    await asyncio.wait_for(
+                        proc.communicate(input=prompt.encode("utf-8")),
+                        timeout=effective_timeout,
+                    )
+                else:
+                    await proc.communicate(input=prompt.encode("utf-8"))
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                killed = True
+            finally:
+                await _kill_group_async(proc)
+        wall = time.monotonic() - t0
         timed_out = killed or wall >= int(timeout)
         if timed_out:
             with stream.open("a", encoding="utf-8") as fh:

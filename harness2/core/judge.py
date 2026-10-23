@@ -37,8 +37,8 @@ class Scored:
     label: str
     run_id: str
     chosen_is_base: bool
-    n_passed: int | None = None
-    n_criteria: int | None = None
+    n_passed: int | float | None = None
+    n_criteria: int | float | None = None
     all_pass: bool = False
     raw: dict = field(default_factory=dict)
     error: str = ""

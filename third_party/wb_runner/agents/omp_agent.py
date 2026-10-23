@@ -52,6 +52,10 @@ class OmpAgent(BaseInstalledAgent):
             or os.environ.get("HARNESS2_OMP_MODEL")
             or None
         )
+        self._agent_timeout_sec: int | None = (
+            kwargs.pop("OMP_TIMEOUT_SEC", None)
+            or kwargs.pop("agent_timeout_sec", None)
+        )
         super().__init__(logs_dir, *args, version=self._omp_version, **kwargs)
 
     @staticmethod
@@ -94,33 +98,46 @@ class OmpAgent(BaseInstalledAgent):
         self.populate_context_post_run(context)
 
     async def _run_omp(self, instruction: str, local_ws: Path) -> None:
-        cmd = [
-            self._omp_bin,
-            "--profile",
-            self._omp_profile,
-            "--cwd",
-            str(local_ws),
-            "-p",
-            "--mode",
-            "json",
-        ]
-        if self._omp_model:
-            cmd.extend(["--model", self._omp_model])
+        from harness2 import config
+        from harness2.substrate.omp import OmpSubstrate
 
         output_file = self.logs_dir / _OUTPUT_FILENAME
-        stderr_file = self.logs_dir / _STDERR_FILENAME
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_file, "wb") as out_f, open(stderr_file, "wb") as err_f:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=out_f,
-                stderr=err_f,
-                cwd=str(local_ws),
-            )
-            await proc.communicate(input=instruction.encode("utf-8"))
+        substrate = OmpSubstrate()
+        model = (
+            self._omp_model
+            or config.SOLVER_MODEL_OMP
+            or os.environ.get("HARNESS2_OMP_MODEL")
+            or os.environ.get("HARNESS2_SOLVER_MODEL")
+        )
+        if not model:
+            raise RuntimeError("OmpAgent needs an explicit OMP model or HARNESS2_OMP_MODEL")
 
+        timeout = int(self._agent_timeout_sec or 3600)
+
+        run = await substrate.run_async(
+            instruction,
+            local_ws,
+            model=model,
+            timeout=timeout,
+            stream=output_file,
+            profile=self._omp_profile,
+            binary=self._omp_bin,
+        )
+
+        legacy_stderr = self.logs_dir / _STDERR_FILENAME
+        if run.stderr.is_file() and run.stderr != legacy_stderr:
+            try:
+                shutil.copy2(run.stderr, legacy_stderr)
+            except OSError:
+                pass
+
+        if run.exit_code not in (0, None):
+            tail = run.stderr_tail(1000)
+            raise RuntimeError(
+                f"OMP process exited with code {run.exit_code}: {tail}"
+            )
     def populate_context_post_run(self, context: AgentContext) -> None:
         events = self._read_events()
         if not events:

@@ -141,7 +141,7 @@ def main(argv=None):
             # Cybench: curated 40-task list from benchmark/**/metadata/metadata.json
             print(f"  [cyber] Repo cloned; 40 curated CTF tasks")
         elif args.benchmark == "rswe":
-            # Rust-SWE-bench: Hugging Face dataset download
+            # Rust-SWE-bench: Hugging Face dataset download (discovery only in harness2)
             dataset_dir = config.DEPENDENCIES / "rustbench"
             if not dry:
                 dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -150,7 +150,7 @@ def main(argv=None):
                     from datasets import load_dataset
                     ds = load_dataset("user2f86/rustbench", revision="25020a91c4bba218e4a143ff315d93beb328c78b", split="train")
                     ds.to_parquet(dataset_dir / "rustbench.parquet")
-                    print(f"  [rswe] Saved {len(ds)} instances to {dataset_dir / 'rustbench.parquet'}")
+                    print(f"  [rswe] Saved {len(ds)} instances to {dataset_dir / 'rustbench.parquet'} (discovery-only; upstream execution requires Docker)")
                 except ImportError:
                     print(f"  [rswe] datasets not installed; saving placeholder. Install with: uv pip install datasets pyarrow")
                     (dataset_dir / "README.txt").write_text(
@@ -162,20 +162,13 @@ def main(argv=None):
                     )
         elif args.benchmark == "crust":
             # CRUST-bench: 100 C projects in data/C-projects
-            print(f"  [crust] Repo cloned; 100 CBench/RBench C-to-Rust projects")
+            print(f"  [crust] Repo cloned; 100 CBench/RBench C-to-Rust projects (OMP executor)")
         elif args.benchmark == "agentre":
-            # AgentRE-Bench: build binaries from sources
-            print(f"  [agentre] Repo cloned; run ./build_binaries.sh to compile 23 levels")
-            if not dry:
-                build_script = repo / "build_binaries.sh"
-                if build_script.exists():
-                    print(f"  [agentre] Building binaries...")
-                    install.run(["bash", str(build_script)], cwd=repo, dry_run=dry)
+            # AgentRE-Bench: 13 Linux ELF levels (precompiled) + 20 Windows PE levels (shipped)
+            print(f"  [agentre] Repo cloned: 13 Linux ELF levels and 20 Windows PE artifacts (static analysis only)")
         elif args.benchmark == "binaudit":
-            # BinaryAudit: requires Harbor and Docker base image
-            print(f"  [binaudit] Repo cloned; install Harbor with: uv tool install harbor")
-            print(f"  [binaudit] Build base image: docker build --platform linux/amd64 -t binaryaudit-base:latest -f docker/base.Dockerfile {repo}")
-        
+            # BinaryAudit: discovery only in harness2
+            print(f"  [binaudit] Repo cloned (discovery only; full execution requires upstream Harbor with Ghidra/Radare2 container)")
         if args.substrate == "cx":
             install.codex(dry_run=dry)
         if args.substrate == "omp":

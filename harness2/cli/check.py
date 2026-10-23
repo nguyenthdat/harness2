@@ -38,6 +38,12 @@ def main(argv=None):
     if errors:
         print(f"Setup incomplete: {len(errors)} issue(s). See docs/BENCHMARKS.md.")
         return 1
+    if args.bench in ("rswe", "binaudit"):
+        print(
+            f"Discovery only: {adapter.spec.name}/{args.substrate}; {len(adapter.tasks())} tasks discovered. "
+            "Execution/scoring is unsupported in harness2 (upstream Docker/Harbor harness required)."
+        )
+        return 0
     print(
         f"Ready: {adapter.spec.name}/{args.substrate}; {len(adapter.tasks())} tasks. "
         "Model access is not exercised; the first real run is the first model call."

@@ -164,7 +164,7 @@ def check(adapter, *, judge=False) -> list[str]:
             ],
             cwd=repo,
         )
-        if adapter.substrate.name == "omp" and not config.SOLVER_MODEL_OC.startswith("google-vertex/"):
+        if adapter.substrate.name == "omp" and not config.SOLVER_MODEL_OMP.startswith("google-vertex/"):
             expected_models = {
                 "solver": config.WB_MODEL_NAME,
                 "judge": config.JUDGE_MODEL,
@@ -181,6 +181,13 @@ def check(adapter, *, judge=False) -> list[str]:
                     errors.append(f"WorkBuddy {role} configuration is stale; rerun setup")
             except (OSError, ValueError, KeyError, TypeError):
                 errors.append(f"WorkBuddy {role} configuration missing; rerun setup")
+    elif bench == "agentre":
+        for tool in ("file", "strings"):
+            if not shutil.which(tool):
+                errors.append(f"{tool} missing; required for static reverse engineering analysis")
+        has_objdump = any(shutil.which(cmd) for cmd in ("gobjdump", "llvm-objdump", "objdump"))
+        if not has_objdump:
+            errors.append("objdump (or gobjdump/llvm-objdump) missing; required for AgentRE disassembly")
     return errors
 
 

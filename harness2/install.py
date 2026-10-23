@@ -156,7 +156,7 @@ def overlays(name: str, *, dry_run=False):
 
 def workbuddy_models(*, dry_run=False, substrate="oc"):
     """Generate WorkBuddy routes for the selected executor without writing credentials."""
-    if substrate == "omp" and not config.SOLVER_MODEL_OC.startswith("google-vertex/"):
+    if substrate == "omp" and not config.SOLVER_MODEL_OMP.startswith("google-vertex/"):
         if not config.WB_BACKEND_URL:
             raise config.ConfigError(
                 "Set HARNESS2_WB_BACKEND_URL for WorkBuddy OMP local-proxy model routing"
