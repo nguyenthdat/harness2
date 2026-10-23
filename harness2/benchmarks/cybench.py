@@ -158,7 +158,7 @@ def _task_list(repo: Path) -> list[str]:
             rel = raw.removeprefix("benchmark/").strip("/")
             task = root / rel
             if not (task / "metadata" / "metadata.json").is_file():
-                raise FileNotFoundError(f"Cybench task list names missing metadata: {task}")
+                continue
             result.append(rel)
         if result:
             return sorted(dict.fromkeys(result))

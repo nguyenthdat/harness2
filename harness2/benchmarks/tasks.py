@@ -108,12 +108,12 @@ def discover(bench: str, subset: str | None = None) -> dict[str, str]:
     elif bench == "crust":
         from .crustbench import CrustAdapter
         repo = config.crust_repo()
-        c_projects = repo / "data" / "C-projects"
-        if not c_projects.is_dir():
+        cbench = repo / "datasets" / "CBench"
+        if not cbench.is_dir():
             return {}
         tasks = {}
-        for proj_dir in sorted(c_projects.iterdir()):
-            if proj_dir.is_dir() and (proj_dir / "Makefile").exists():
+        for proj_dir in sorted(cbench.iterdir()):
+            if proj_dir.is_dir():
                 task_id = proj_dir.name
                 from .crustbench import _infer_domain
                 tasks[task_id] = _infer_domain(task_id)
