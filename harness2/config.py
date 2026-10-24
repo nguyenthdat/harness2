@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-
+from urllib.parse import urlparse
 PKG = Path(__file__).resolve().parent
 ROOT = PKG.parent if (PKG.parent / "pyproject.toml").is_file() else Path.cwd()
 THIRD_PARTY = ROOT / "third_party"
@@ -186,6 +186,10 @@ VERTEX_OPENAI_URL = (
     f"/locations/{VERTEX_REGION}/endpoints/openapi"
 )
 JB_JUDGE_API_BASE = env("HARNESS2_JUDGE_BASE_URL", VERTEX_OPENAI_URL if VERTEX_PROJECT else "")
+if JB_JUDGE_API_BASE:
+    _parsed_base = urlparse(JB_JUDGE_API_BASE)
+    if _parsed_base.path in ("", "/"):
+        JB_JUDGE_API_BASE = JB_JUDGE_API_BASE.rstrip("/") + "/v1"
 JB_JUDGE_API_KEY = env("HARNESS2_JUDGE_API_KEY", "")
 JB_JUDGE_REASONING_EFFORT = "low"
 JB_REPORTING_JUDGE_DETAILS = ""
@@ -215,8 +219,13 @@ WB_MAX_JOBS = {"oc": 1, "cx": 1, "omp": 1}
 WB_MAX_TRIALS = {"oc": 2, "cx": 2, "omp": 2}
 WB_MODEL_CONNECTION = "local_proxy"
 
-DEFAULT_PROPOSER_CHANNEL = "opencode"
-PROPOSER_MODEL_BY_CHANNEL = {"opencode": IMPROVER_MODEL, "claude_cli": IMPROVER_MODEL}
+DEFAULT_PROPOSER_CHANNEL = env("HARNESS2_IMPROVER_CHANNEL", "opencode")
+PROPOSER_MODEL_BY_CHANNEL = {
+    "opencode": IMPROVER_MODEL,
+    "claude_cli": IMPROVER_MODEL,
+    "omp": IMPROVER_MODEL,
+}
+IMPROVER_OMP_PROFILE = env("HARNESS2_IMPROVER_OMP_PROFILE", env("HARNESS2_OMP_PROFILE", "default"))
 PHASE_WIDTH = 2
 TRANSPORT_ATTEMPTS = 2
 PROPOSER_CONCURRENCY = 2

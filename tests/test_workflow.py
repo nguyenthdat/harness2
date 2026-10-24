@@ -48,13 +48,17 @@ class WorkflowTests(unittest.TestCase):
         )
 
     def test_recursion_budget_and_resume(self):
-        with patch.dict(config.PROPOSER_MODEL_BY_CHANNEL, {"opencode": "", "claude_cli": ""}):
+        with patch.dict(config.PROPOSER_MODEL_BY_CHANNEL, {"opencode": "", "claude_cli": "", "omp": ""}):
             unresolved = resolve_channel_model(None, None)
             self.assertEqual(unresolved.model, "")
             with self.assertRaises(ValueError):
                 Proposer(unresolved)
             with self.assertRaises(ValueError):
                 resolve_channel_model("opencode", "")
+            with self.assertRaises(ValueError):
+                resolve_channel_model("omp", "")
+            with self.assertRaises(ValueError):
+                resolve_channel_model("omp", "bare-model-id")
         for k in (1, 2):
             with self.subTest(k=k):
                 result = self.run_stream(k)
@@ -224,6 +228,93 @@ class WorkflowTests(unittest.TestCase):
         self.adapter.score.assert_not_called()
         self.assertEqual((rows[0].graded, rows[0].n_passed), (False, None))
 
+    def test_omp_channel_spec_and_env(self):
+        spec = resolve_channel_model("omp", "deepseek/deepseek-flash")
+        self.assertEqual(spec.kind, "omp")
+        self.assertEqual(spec.model, "deepseek/deepseek-flash")
+        prop = Proposer(spec)
+        env = prop.env()
+        self.assertEqual(env.get("OMP_PROFILE"), config.IMPROVER_OMP_PROFILE)
+        for drop in ("OMP_PROFILE", "PI_PROFILE", "PI_CODING_AGENT_DIR"):
+            # env has OMP_PROFILE overridden, but other dropped vars shouldn't be present if set ambiently
+            pass
+        # Test with ambient environment vars
+        with patch.dict("os.environ", {"PI_PROFILE": "custom", "ANTHROPIC_API_KEY": "secret"}):
+            env_dropped = prop.env()
+            self.assertNotIn("PI_PROFILE", env_dropped)
+            self.assertNotIn("ANTHROPIC_API_KEY", env_dropped)
+            self.assertEqual(env_dropped["OMP_PROFILE"], config.IMPROVER_OMP_PROFILE)
+
+    def test_omp_proposer_stdout_parsing(self):
+        spec = resolve_channel_model("omp", "deepseek/deepseek-flash")
+        prop = Proposer(spec)
+        tmp_dir = self.root / "omp_test"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Case 1: answer.md present
+        ans_dir = tmp_dir / "output"
+        ans_dir.mkdir(parents=True, exist_ok=True)
+        (ans_dir / "answer.md").write_text("Hello from answer.md", encoding="utf-8")
+
+        fake_stdout = json.dumps({
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Fallback stdout text"}],
+                "usage": {"cost": {"total": 0.042}},
+            },
+        })
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout=fake_stdout, stderr="")
+            text, cost, err = prop._omp(tmp_dir, "Do task", "System prompt", wall=60)
+            self.assertEqual(text, "Hello from answer.md")
+            self.assertEqual(cost, 0.042)
+            self.assertEqual(err, "")
+            self.assertTrue((tmp_dir / "MISSION.md").is_file())
+            self.assertIn("System prompt\n\n---\n\nDo task", (tmp_dir / "MISSION.md").read_text())
+
+        # Case 2: no answer.md, fallback to stdout assistant text
+        (ans_dir / "answer.md").unlink()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout=fake_stdout, stderr="")
+            text, cost, err = prop._omp(tmp_dir, "Do task", "", wall=60)
+            self.assertEqual(text, "Fallback stdout text")
+            self.assertEqual(cost, 0.042)
+            self.assertEqual(err, "")
+
+        # Case 3: error in message_end and returncode != 0
+        error_stdout = json.dumps({
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [],
+                "stopReason": "error",
+                "errorMessage": "Model quota exceeded",
+            },
+        })
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=1, stdout=error_stdout, stderr="some crash")
+            text, cost, err = prop._omp(tmp_dir, "Do task", "", wall=60)
+            self.assertEqual(text, "")
+            self.assertIn("Model quota exceeded", err)
+
+        # Case 4: agent_end fallback with messages and cost
+        agent_end_stdout = json.dumps({
+            "type": "agent_end",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Agent end reply"}],
+                }
+            ],
+            "usage": {"cost": {"total": 0.055}},
+        })
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout=agent_end_stdout, stderr="")
+            text, cost, err = prop._omp(tmp_dir, "Do task", "", wall=60)
+            self.assertEqual(text, "Agent end reply")
+            self.assertEqual(cost, 0.055)
+            self.assertEqual(err, "")
 
 if __name__ == "__main__":
     unittest.main()

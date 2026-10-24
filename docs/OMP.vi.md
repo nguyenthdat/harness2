@@ -113,14 +113,18 @@ HARNESS2_JUDGE_API_KEY=sk-...
 | `HARNESS2_SOLVER_MODEL` | Bắt buộc với mọi lệnh, theo dạng `provider/model` của OpenCode; là giá trị mặc định cho model executor và improver |
 | `HARNESS2_IMPROVER_MODEL` | Các phiên improver: đề xuất, gộp, chọn, reflection |
 | `HARNESS2_JUDGE_MODEL`, `HARNESS2_JUDGE_BASE_URL`, `HARNESS2_JUDGE_API_KEY` | `harness2-judge`, qua judge client tương thích OpenAI của JobBench |
+| `HARNESS2_IMPROVER_CHANNEL` | Channel improver: `opencode` (mặc định), `claude_cli`, hoặc `omp` |
+| `HARNESS2_IMPROVER_OMP_PROFILE` | Profile dùng khi `HARNESS2_IMPROVER_CHANNEL=omp`; mặc định là `HARNESS2_OMP_PROFILE` hoặc `default` |
 
 - Harness² tự nạp `.env`, và biến trong shell được ưu tiên hơn. Nó không expand
   `$VAR`, nên key của judge phải ghi lại lần nữa; khi đổi key thì sửa cả hai
   dòng.
 - `deepseek-flash` thay được `deepseek-v4-pro` ở mọi vai. Model được ghi lại
   cùng run, nên hãy chọn trước lần chạy đầu tiên.
-- Improver chạy với thư mục data OpenCode riêng và không có các biến
+- Mặc định, improver chạy với thư mục data OpenCode riêng và không có các biến
   `ANTHROPIC_*`, nên login của OpenCode và API key Anthropic không tới được nó.
+  Khi đặt `HARNESS2_IMPROVER_CHANNEL=omp`, các phiên improver thích ứng đệ quy
+  (đề xuất, gộp, chọn) sẽ chạy trực tiếp qua `omp` sử dụng `HARNESS2_IMPROVER_OMP_PROFILE`.
   Provider nào mà cả OMP lẫn OpenCode đều đọc từ một biến API key thì thay được
   DeepSeek theo cùng cách, với judge dùng một endpoint tương thích OpenAI; đường
   Vertex AI xem ở [Models and credentials](SETUP.md#models-and-credentials).

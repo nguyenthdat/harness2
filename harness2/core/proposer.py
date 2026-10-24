@@ -103,6 +103,11 @@ class Proposer:
             raise ValueError("Set HARNESS2_IMPROVER_MODEL before starting model sessions")
 
     def env(self) -> dict[str, str]:
+        if self.spec.kind == "omp":
+            from ..substrate.omp import _DROPPED_ENV
+            e = {k: v for k, v in os.environ.items() if k not in _DROP_ENV and k not in _DROPPED_ENV}
+            e["OMP_PROFILE"] = config.IMPROVER_OMP_PROFILE
+            return e
         e = {k: v for k, v in os.environ.items() if k not in _DROP_ENV}
         if self.spec.kind == "claude_cli":
             e.update(
@@ -159,9 +164,13 @@ class Proposer:
                 if context_dir and Path(context_dir).is_dir():
                     shutil.copytree(context_dir, tmp / "context", dirs_exist_ok=True)
                 with _SEM if _SEM is not None else contextlib.nullcontext():
-                    text, cost, err = (
-                        self._claude_cli if self.spec.kind == "claude_cli" else self._opencode
-                    )(tmp, mission, system, wall)
+                    if self.spec.kind == "claude_cli":
+                        runner = self._claude_cli
+                    elif self.spec.kind == "omp":
+                        runner = self._omp
+                    else:
+                        runner = self._opencode
+                    text, cost, err = runner(tmp, mission, system, wall)
                 spent_usd += cost
                 if not text.strip():
                     last = err or "empty reply"
@@ -308,6 +317,59 @@ class Proposer:
         if text.strip():
             return text, cost, ""
         tail = _strip_oc_banner(p.stderr or "").strip()[-300:]
+        return "", cost, f"rc={p.returncode}: {err or tail or 'empty reply'}"
+
+    def _omp(self, cwd: Path, mission: str, system: str, wall: int) -> tuple[str, float, str]:
+        (cwd / "MISSION.md").write_text(
+            (f"{system}\n\n---\n\n" if system else "") + mission, encoding="utf-8"
+        )
+        out = cwd / "output"
+        out.mkdir(exist_ok=True)
+
+        prompt = (
+            "Read MISSION.md first. Do what it asks. Reply with the requested output as "
+            "your final message AND save it verbatim to output/answer.md."
+        )
+        cmd = [
+            config.OMP_BIN,
+            "--profile",
+            config.IMPROVER_OMP_PROFILE,
+            "-p",
+            "--auto-approve",
+            "--mode",
+            "json",
+            "--cwd",
+            str(cwd),
+        ]
+        if self.spec.model:
+            cmd += ["--model", self.spec.model]
+        cmd += [
+            "--max-time",
+            str(int(wall)),
+            "--no-title",
+            "--no-lsp",
+        ]
+        if self.spec.effort:
+            cmd += ["--thinking", self.spec.effort]
+
+        p = subprocess.run(
+            cmd,
+            input=prompt,
+            cwd=cwd,
+            env=self.env(),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=wall,
+        )
+        cost = _omp_cost(p.stdout)
+        ans = out / "answer.md"
+        if ans.is_file() and ans.read_text(errors="replace").strip():
+            return ans.read_text(errors="replace"), cost, ""
+        text, err = _omp_stdout(p.stdout)
+        if text.strip():
+            return text, cost, ""
+        tail = (p.stderr or "").strip()[-300:]
         return "", cost, f"rc={p.returncode}: {err or tail or 'empty reply'}"
 
     def _harvest(self, tmp: Path, sub: str, label: str, cache_key: str = "") -> Path | None:
@@ -501,6 +563,110 @@ def _opencode_cost(stdout: str) -> float:
             c = part.get("cost")
             if isinstance(c, (int, float)):
                 total += float(c)
+    return round(total, 6)
+
+def _omp_stdout(stdout: str) -> tuple[str, str]:
+    """Extract final assistant text blocks and errors from an omp NDJSON stream."""
+    last_assistant_text = ""
+    errors: list[str] = []
+    saw_json = False
+
+    def extract_text(msg: dict) -> str:
+        content = msg.get("content")
+        parts: list[str] = []
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):
+            for b in content:
+                if isinstance(b, dict) and b.get("type") == "text":
+                    t = b.get("text")
+                    if isinstance(t, str) and t.strip():
+                        parts.append(t)
+        return "\n\n".join(parts)
+
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        saw_json = True
+        et = ev.get("type")
+        if et == "message_end":
+            msg = ev.get("message")
+            if isinstance(msg, dict) and msg.get("role") == "assistant":
+                txt = extract_text(msg)
+                if txt:
+                    last_assistant_text = txt
+                stop = msg.get("stopReason")
+                if stop in ("error", "aborted"):
+                    err_msg = str(msg.get("errorMessage") or stop)
+                    errors.append(err_msg)
+        elif et == "agent_end":
+            # Check messages list if present
+            messages = ev.get("messages")
+            if isinstance(messages, list):
+                for msg in messages:
+                    if isinstance(msg, dict) and msg.get("role") == "assistant":
+                        txt = extract_text(msg)
+                        if txt:
+                            last_assistant_text = txt
+            err = ev.get("error")
+            if err:
+                errors.append(str(err))
+        elif et == "error":
+            err = ev.get("message") or ev.get("error")
+            if err:
+                errors.append(str(err))
+    if not saw_json:
+        return (stdout or "").strip(), ""
+    return last_assistant_text, "; ".join(errors)[-300:]
+
+
+def _omp_cost(stdout: str) -> float:
+    """Tally cost from usage.cost.total in message_end and agent_end events."""
+    total = 0.0
+    saw_message_cost = False
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        et = ev.get("type")
+        if et == "message_end":
+            msg = ev.get("message")
+            if isinstance(msg, dict):
+                usage = msg.get("usage")
+                if isinstance(usage, dict):
+                    cost = usage.get("cost")
+                    if isinstance(cost, dict):
+                        c = cost.get("total")
+                        if isinstance(c, (int, float)):
+                            total += float(c)
+                            saw_message_cost = True
+        elif et == "agent_end" and not saw_message_cost:
+            # If individual messages didn't report cost, check agent_end top-level usage/cost
+            usage = ev.get("usage")
+            if isinstance(usage, dict):
+                cost = usage.get("cost")
+                c = cost.get("total") if isinstance(cost, dict) else usage.get("cost")
+                if isinstance(c, (int, float)):
+                    total += float(c)
+            elif isinstance(ev.get("cost"), (int, float)):
+                total += float(ev["cost"])
+            elif isinstance(ev.get("cost"), dict):
+                c = ev["cost"].get("total")
+                if isinstance(c, (int, float)):
+                    total += float(c)
     return round(total, 6)
 
 

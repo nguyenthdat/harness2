@@ -114,15 +114,19 @@ HARNESS2_JUDGE_API_KEY=sk-...
 | `HARNESS2_SOLVER_MODEL` | Required by every command, in OpenCode's `provider/model` form; the default for the executor and improver models |
 | `HARNESS2_IMPROVER_MODEL` | Improver sessions: proposals, compositions, selection, reflection |
 | `HARNESS2_JUDGE_MODEL`, `HARNESS2_JUDGE_BASE_URL`, `HARNESS2_JUDGE_API_KEY` | `harness2-judge`, through JobBench's OpenAI-compatible judge client |
+| `HARNESS2_IMPROVER_CHANNEL` | Improver channel: `opencode` (default), `claude_cli`, or `omp` |
+| `HARNESS2_IMPROVER_OMP_PROFILE` | Profile used when `HARNESS2_IMPROVER_CHANNEL=omp`; defaults to `HARNESS2_OMP_PROFILE` or `default` |
 
 - Harness² loads `.env` itself, and shell variables take precedence. It does not
   expand `$VAR`, so the judge key appears a second time; change both lines when
   you rotate the key.
 - `deepseek-flash` can replace `deepseek-v4-pro` in any role. The models are
   recorded with the run, so choose them before the first run.
-- The improver runs with an isolated OpenCode data directory and without
+- By default, the improver runs via OpenCode with an isolated data directory and without
   `ANTHROPIC_*` variables, so OpenCode logins and Anthropic API keys never reach
-  it. Any provider that OMP and OpenCode both read from an API-key variable can
+  it. Setting `HARNESS2_IMPROVER_CHANNEL=omp` runs recursive adaptation improver sessions
+  (proposals, compositions, selection) directly through `omp` using `HARNESS2_IMPROVER_OMP_PROFILE`.
+  Any provider that OMP and OpenCode both read from an API-key variable can
   replace DeepSeek the same way, with an OpenAI-compatible endpoint for the
   judge; the Vertex AI route is in
   [Models and credentials](SETUP.md#models-and-credentials).

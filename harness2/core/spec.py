@@ -30,7 +30,7 @@ from .tree import SurfaceSpec
 
 ModelId = str
 
-CHANNELS = ("claude_cli", "opencode")
+CHANNELS = ("claude_cli", "opencode", "omp")
 
 
 @dataclass(frozen=True)
@@ -82,6 +82,11 @@ def resolve_channel_model(
         raise ValueError(
             f"claude_cli channel takes a bare Anthropic id "
             f"(e.g. {config.PROPOSER_MODEL_BY_CHANNEL['claude_cli']!r}), got {model!r}"
+        )
+    if kind in ("opencode", "omp") and "/" not in model:
+        raise ValueError(
+            f"{kind} channel needs a provider-prefixed model id "
+            f"in HARNESS2_IMPROVER_MODEL or HARNESS2_SOLVER_MODEL, got {model!r}"
         )
     return ChannelSpec(kind, model, effort=effort, steps=steps, timeout=timeout)
 
