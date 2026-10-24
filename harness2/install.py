@@ -172,9 +172,10 @@ def workbuddy_models(*, dry_run=False, substrate="oc"):
             "judge": {
                 "name": config.JUDGE_MODEL,
                 "protocols": ["openai"],
-                "backend_url_env": config.WB_BACKEND_URL_ENV,
-                "backend_key_env": config.WB_BACKEND_KEY_ENV,
+                "backend_url_env": "HARNESS2_JUDGE_BASE_URL" if config.JB_JUDGE_API_BASE else config.WB_BACKEND_URL_ENV,
+                "backend_key_env": "HARNESS2_JUDGE_API_KEY" if config.JB_JUDGE_API_KEY else config.WB_BACKEND_KEY_ENV,
                 "params": {"max_output_tokens": 16384},
+                **({"headers": config.JUDGE_HEADERS, "backend_headers": config.JUDGE_HEADERS} if config.JUDGE_HEADERS else {}),
             },
         }
         for role, model in payloads.items():

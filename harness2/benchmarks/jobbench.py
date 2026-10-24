@@ -1187,6 +1187,7 @@ class JobBenchAdapter:
             "JUDGE_API_KEY": token,
             "JUDGE_REASONING_EFFORT": config.JB_JUDGE_REASONING_EFFORT,
             "VERTEXAI_LOCATION": config.VERTEX_REGION,
+            **({"JUDGE_HEADERS": json.dumps(config.JUDGE_HEADERS)} if config.JUDGE_HEADERS else {}),
         }
         try:
             r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=1800)

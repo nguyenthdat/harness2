@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -191,7 +192,33 @@ if JB_JUDGE_API_BASE:
     if _parsed_base.path in ("", "/"):
         JB_JUDGE_API_BASE = JB_JUDGE_API_BASE.rstrip("/") + "/v1"
 JB_JUDGE_API_KEY = env("HARNESS2_JUDGE_API_KEY", "")
-JB_JUDGE_REASONING_EFFORT = "low"
+JB_JUDGE_REASONING_EFFORT = env("JUDGE_REASONING_EFFORT", env("HARNESS2_JUDGE_REASONING_EFFORT", "low"))
+
+def _load_judge_headers() -> dict[str, str]:
+    headers: dict[str, str] = {}
+    raw = env("HARNESS2_JUDGE_HEADERS", "")
+    if raw:
+        try:
+            headers.update(json.loads(raw))
+        except Exception:
+            for line in raw.split(","):
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    headers[k.strip()] = v.strip()
+                elif "=" in line:
+                    k, v = line.split("=", 1)
+                    headers[k.strip()] = v.strip()
+    cf_id = env("CF_ACCESS_CLIENT_ID", "")
+    cf_secret = env("CF_ACCESS_CLIENT_SECRET", "")
+    if cf_id and "CF-Access-Client-Id" not in headers:
+        headers["CF-Access-Client-Id"] = cf_id
+    if cf_secret and "CF-Access-Client-Secret" not in headers:
+        headers["CF-Access-Client-Secret"] = cf_secret
+    if "CF-Access-Client-Id" in headers and "User-Agent" not in headers:
+        headers["User-Agent"] = "curl/8.7.1"
+    return headers
+
+JUDGE_HEADERS = _load_judge_headers()
 JB_REPORTING_JUDGE_DETAILS = ""
 JB_OBS_TRUNC = 50000
 
