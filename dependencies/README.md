@@ -212,5 +212,160 @@ Research findings (October 2024) for additional security coverage:
 - Real bug corpus: 138 CVE-mapped vulnerabilities with triggering input generation
 - **New capability**: Dynamic analysis, exploit triggering (current benchmarks are static-only)
 
+
+### Mobile reverse engineering (Android + iOS)
+
+**Distinct from mobile pentest** — RE focuses on static/dynamic binary analysis (APK/DEX/IPA/Mach-O), malware triage, deobfuscation, and vulnerability identification without exploit execution. Pentest executes exploits against running apps.
+
+#### Android RE (mature benchmarks exist)
+
+**Priority 1: MalEval** (BEST, MEDIUM integration effort)
+- **Source**: ISSTA 2026
+- **Paper**: "Is 'Knowing It's Malicious' Enough? Evaluating LLMs for Fine-Grained Malware Behavior Auditing"
+- **Repository**: https://github.com/ZhengXR930/MalEval
+- **Dataset**: https://huggingface.co/datasets/Xinzxr/MalEval
+- **Tasks**: 255 Android applications (200 archived malware, 30 recent, 25 benign)
+- **Binary types**: APK/DEX (Androguard decompilation)
+- **Analysis type**: Static analysis with function-level reasoning
+- **Agent's job**: Analyze decompiled code → generate function summaries, entry points, call chains → produce behavior reports → map to ground-truth malware behaviors
+- **Scoring oracle**: Multi-metric deterministic (Binary F1, Report Quality via LLM-as-judge, False Positive Correction Rate, True Positive Maintenance Rate, Category-level F1)
+- **Runtime**: Python 3.10+, Androguard, LangGraph, model API keys (OpenAI/Anthropic/DeepSeek)
+- **License**: Other (excludes third-party malware samples)
+- **Maintenance**: Active (Aug 2026 ISSTA paper, recent commits)
+- **Integration effort**: MEDIUM — Clean Python pipeline, separated static analysis and LLM evaluation stages, model-agnostic (registry in `model_registry.yaml`), deterministic scoring implemented, released dataset with metadata. **Requires isolated environment for APK handling** (malware samples).
+- **Value**: Behavior-level malware understanding (not just family classification). Well-structured adapter candidate. **Scale**: 255 tasks vs desktop RE's 33 (AgentRE) and 33 (BinaryAudit).
+
+**Priority 2: CAMA** (function-level RE, MEDIUM effort, dataset access unclear)
+- **Source**: ISSTA Companion 2025
+- **Paper**: "On Benchmarking Code LLMs for Android Malware Analysis"
+- **Repository**: Zenodo dataset 10.5281/zenodo.15155916 (⚠️ 403 forbidden as of Oct 2026 — may not be public yet)
+- **Tasks**: 118 Android malware samples → **7.5 million distinct functions** (13 malware families, 6 categories)
+- **Binary types**: APK → DEX → decompiled Java (Androguard)
+- **Analysis type**: Static analysis, function-level code understanding
+- **Agent's job**: Malicious function identification (via maliciousness scores), malware purpose summarization, refined function naming
+- **Scoring oracle**: Multi-metric (Maliciousness Consistency Score, Name Consistency Score, Maliciousness-based Fidelity Score via classifier confidence drop, Semantic Relevance vs ground-truth descriptions)
+- **Runtime**: Python, Androguard, Code LLM endpoints (CodeLlama, StarChat, CodeT5, PLBART evaluated)
+- **License**: CC BY-NC-SA 4.0 (paper)
+- **Integration effort**: MEDIUM — Smaller sample count vs MalEval (118 vs 255) but **much larger function corpus** (7.5M functions). Focus on Code LLM understanding rather than end-to-end malware reporting. Well-defined metrics for function-level analysis.
+- **Blockers**: Dataset may not be fully public (Zenodo link failed); wait for public release.
+- **Value**: Function-level RE specialization (complements MalEval's app-level reports).
+
+**Priority 3: AMD (Android Malware Dataset)** (BEST behavioral ground truth, MEDIUM-HIGH effort, oracle construction needed)
+- **Source**: ArgusLab 2017
+- **Homepage**: http://amd.arguslab.org
+- **Paper**: "Deep Ground Truth Analysis of Current Android Malware" (ArgusLab Tech Report 2017-2)
+- **Tasks**: 24,650 total samples → **405 deeply analyzed** (3 per variety × 135 varieties)
+- **Structure**: 71 malware families → **135 varieties** (semantically distinct behavior variants)
+- **Binary types**: APK
+- **Ground truth**: Family labels (71) + **variety labels (135)** + **detailed behavioral descriptions** for each variety (manual expert analysis)
+- **Collection period**: 2010–2016
+- **Scoring oracle**: **Needs construction** — Variety labels + behavioral descriptions provided; could build variety classification, behavior-matching, malware-family disambiguation tasks
+- **Runtime**: Depends on oracle construction
+- **License**: Research use
+- **Integration effort**: MEDIUM-HIGH — Most detailed behavioral ground truth of any Android dataset (135 varieties with expert-verified descriptions). Requires oracle construction (no existing scoring framework). Samples dated (2010–2016) but more recent than Drebin.
+- **Value**: Best candidate for behavior-rich RE tasks (identify variety, match behaviors, explain maliciousness). **Scale**: 135–405 tasks vs desktop's 33.
+
+**Priority 4: AndroTruth** (BEST label reliability, MEDIUM effort, oracle construction needed)
+- **Source**: ThreatIntel-Andro (arXiv Oct 2025)
+- **Paper**: "AndroTruth: A Reliable Benchmark Android Malware Dataset Derived from Technical Expert Reports"
+- **Paper URL**: https://arxiv.org/html/2510.16835
+- **Tasks**: 8,172 samples across **187 malware families**
+- **Binary types**: APK
+- **Ground truth**: **Expert-verified family labels** from 199 security reports (22 vendors) — not AV consensus (addresses label noise problem in datasets like AndroZoo)
+- **Collection period**: Reports from Feb 2016 – June 2025
+- **Scoring oracle**: **Needs construction** — Family classification oracle (187 families); could add behavior extraction from linked threat reports
+- **Runtime**: Depends on oracle construction
+- **License**: Not specified in abstract
+- **Integration effort**: MEDIUM — Clean family classification; most reliable labels (expert-verified, not AV voting). Could mine threat reports for behavioral tasks. No behavioral descriptions beyond family (vs AMD's variety-level detail).
+- **Value**: Most reliable family classification ground truth (187 families). **Scale**: 187+ tasks vs desktop's 33.
+
+**Priority 5: CICMalDroid-2020** (LARGE scale, MEDIUM effort, oracle construction needed)
+- **Source**: UNB CIC
+- **Homepage**: https://unb.ca/cic/datasets/maldroid-2020.html
+- **Kaggle**: https://www.kaggle.com/datasets/hasanccr92/cicmaldroid-2020
+- **Tasks**: 17,341 collected → 13,077 analyzed → **11,598 final samples**
+- **Categories**: 5 balanced categories (Benign: 1,795, Riskware: 2,546, SMS malware: 3,904, Banking: 2,100, Adware: 1,253)
+- **Binary types**: APK
+- **Ground truth**: Category labels + dynamic behavior features (CopperDroid analysis)
+- **Collection period**: Dec 2017 – Dec 2018
+- **Scoring oracle**: **Needs construction** — Category classification oracle (5-way); could add malicious behavior detection tasks
+- **Runtime**: Depends on oracle construction
+- **License**: Research use
+- **Integration effort**: MEDIUM — Modern samples (2017–2018), balanced categories, dynamic features available. Only 5 categories (less granular than AMD's 135 varieties or AndroTruth's 187 families). **Scale**: 11,598 samples >> desktop RE (AgentRE-Bench 33, BinaryAudit 33).
+- **Value**: Category-level malware triage (5-way classification), large-scale evaluation.
+
+**Not recommended** (Android):
+- **Drebin** (5,560 samples, 179 families): Classic benchmark (2014), dated samples (2010–2012), requires email access request. **Lower priority** than modern alternatives.
+- **PRAGuard** (10,479 samples, 7 obfuscation techniques): Only large-scale obfuscation benchmark, but base samples dated (MalGenome/Contagio), narrow focus (obfuscation not broad RE). **Niche use case.**
+- **DroidBench** (190 test cases): Well-established taint-analysis benchmark, but narrow focus (information-flow vulnerabilities only). **Partial fit** (not broad malware RE).
+- **Ghera** (25 vulnerabilities): Exploit benchmarks, overlaps with mobile pentest. **Wrong task type** (pentest not RE).
+
+**Vapor/inaccessible**:
+- **CAMA dataset**: Zenodo link 403 (Oct 2026)
+- **Malaika**: Framework in paper, no public repo yet
+- **WireBench**: HuggingFace dataset exists but task count unclear
+- **AndroZoo**: Requires API key (academic credentials)
+
+#### iOS RE (critical gap — no mature benchmarks)
+
+**Best available: UnCrackable L1–L4** (OWASP MAS Crackmes, LOW effort, insufficient scale)
+- **Source**: OWASP MSTG
+- **Homepage**: https://mas.owasp.org/crackmes/iOS/
+- **Repository**: https://github.com/OWASP/mas-crackmes
+- **Tasks**: 4–5 IPA challenges (Level 1, 2, 3, r2pay Level 4, Android License Validator)
+- **Binary types**: IPA / Mach-O (ARM64)
+- **Analysis type**: Static RE (Hopper/IDA/Ghidra) + dynamic (Frida/lldb)
+- **Agent's job**: Extract hidden secret string, bypass anti-tampering, reverse obfuscation/whitebox crypto
+- **Scoring oracle**: PARTIAL — Each challenge has known secret (ground truth); binary comparison (correct/incorrect)
+- **Runtime**: Hopper/IDA/Ghidra (static), Frida/lldb (dynamic)
+- **License**: Open source
+- **Integration effort**: LOW — Simple string comparison oracle, well-documented solutions.
+- **Blockers**: **Insufficient scale** (4–5 challenges vs Android's 255–24K, desktop's 33). Good for proof-of-concept iOS adapter, **not production benchmark**.
+
+**Alternative: DVIA-v2** (OWASP MSTG, MEDIUM-HIGH effort, single app)
+- **Source**: OWASP MSTG (MASTG-APP-0024)
+- **Repository**: OWASP MSTG GitHub
+- **Tasks**: 15+ known vulnerabilities in **1 app** (insecure storage, improper cryptography, etc.)
+- **Binary types**: IPA / Mach-O (Swift-based)
+- **Ground truth**: Documented vulnerabilities (no automated scoring framework)
+- **Scoring oracle**: **Needs construction** — Define "vulnerability identified" criteria
+- **Integration effort**: MEDIUM-HIGH — Single app, oracle construction required.
+- **Blockers**: **Only 1 app** with ~15 vulns (vs Android's hundreds/thousands of samples). Insufficient for benchmark (needs 20+ apps minimum).
+
+**iOS gap analysis**:
+
+**What doesn't exist**:
+- iOS malware family datasets (like Android's Drebin/AMD/AndroTruth)
+- iOS malware behavior benchmarks (like MalEval/CAMA)
+- Large-scale iOS RE challenge collections
+- iOS obfuscation benchmarks
+
+**Why iOS is underserved**:
+1. iOS malware is rare in the wild (App Store review + sandboxing vs Android's open ecosystem)
+2. Fewer public iOS binaries (vs APKs easily obtained)
+3. iOS analysis requires macOS + Xcode (vs Android's Linux/Windows portability)
+4. Research community focuses on Android (larger attack surface)
+ **Smallest credible iOS construction**:
+- Collect 20–30 iOS IPAs (mix of benign and vulnerable apps)
+- Combine UnCrackable (4–5) + DVIA-v2 (1 app, 15+ vulns) + other public IPAs with documented issues
+- Build oracle: vulnerability detection (binary per vuln type) or secret extraction
+- **Realistic scale**: 20–35 tasks vs desktop RE's 33, Android's 255–24K
+- **Effort**: MEDIUM-HIGH (manual vulnerability annotation required)
+
+**Recommendation**: iOS is a **gap** requiring custom construction. Consider skipping iOS initially or wrapping UnCrackable for proof-of-concept.
+
+### Coverage projection (mobile RE)
+
+**With MalEval + AMD + AndroTruth** (Android):
+- Malware behavior auditing: MalEval (255 tasks)
+- Behavioral ground truth: AMD (135 varieties, 405 deeply analyzed)
+- Reliable family classification: AndroTruth (187 families)
+- **Total Android RE**: ~577 tasks vs desktop's 56 (10× expansion)
+
+**With UnCrackable** (iOS):
+- RE challenges: 4–5 tasks (proof-of-concept only)
+- **iOS remains 1–2% of Android scale** (gap)
+
 ---
+
 See [pins and patch purposes](PINNED.md).
