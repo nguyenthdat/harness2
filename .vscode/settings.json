@@ -1,0 +1,59 @@
+{
+  "git.autoRepositoryDetection": false,
+  "git.repositoryScanMaxDepth": 0,
+  "git.ignoredRepositories": [
+    "dependencies/AgentRE-Bench",
+    "dependencies/BinaryAudit",
+    "dependencies/CRUST-bench",
+    "dependencies/Rust-SWE-Bench",
+    "dependencies/autopenbench",
+    "dependencies/bountybench",
+    "dependencies/calif-publications",
+    "dependencies/crsbench",
+    "dependencies/cve-bench",
+    "dependencies/cybench",
+    "dependencies/cybergym",
+    "dependencies/cybergym-e2e",
+    "dependencies/droidbench",
+    "dependencies/fuzzingbrain-bench",
+    "dependencies/ghera",
+    "dependencies/hackworld",
+    "dependencies/harvey-labs",
+    "dependencies/hptsa",
+    "dependencies/intercode",
+    "dependencies/job-bench-eval",
+    "dependencies/maleval",
+    "dependencies/mas-crackmes",
+    "dependencies/mastg",
+    "dependencies/mobilecybench",
+    "dependencies/nyu-ctf-bench",
+    "dependencies/opencode",
+    "dependencies/oss-crs",
+    "dependencies/sec-bench",
+    "dependencies/sec-bench-pro",
+    "dependencies/workbuddy-bench",
+    "dependencies/xbow-validation"
+  ],
+  "files.watcherExclude": {
+    "**/dependencies/**": true,
+    "**/runs/**": true,
+    "**/.venv/**": true,
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true
+  },
+  "search.exclude": {
+    "**/dependencies/**": true,
+    "**/runs/**": true,
+    "**/.venv/**": true,
+    "**/node_modules/**": true
+  },
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.analysis.exclude": [
+    "dependencies",
+    "runs"
+  ],
+  "python.analysis.ignore": [
+    "dependencies",
+    "runs"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/.venv",
+    "**/dependencies",
+    "**/runs",
+    "**/node_modules"
+  ],
+  "languages": {
+    "Python": {
+      "language_servers": [
+        "pyright",
+        "ruff"
+      ]
+    }
+  }
+}

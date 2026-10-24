@@ -113,6 +113,27 @@ DEPENDENCY_PINS = {
     "CRUST-bench": "4b4702544b800a3821feea128c5b9e413665dc83",
     "AgentRE-Bench": "654c4042bb0022b32b522769d99f76b103f5d504",
     "BinaryAudit": "175b7ec1a39b7ba1545ae008a9e93106348c3b4e",
+    "autopenbench": "9c4890a7195896a399339f4b1b0e0c498fdd27cb",
+    "bountybench": "8ece6aab0b954f7c85b5705e69f0142eeaf2c5d1",
+    "hptsa": "ab4c77ce0ecd44fa9f1b9adc82779312342d9a2e",
+    "hackworld": "7eddbe396d2adb3042482134fd08508e8ea21a3f",
+    "nyu-ctf-bench": "4c5744f55a31a58e03d6118c9dbb1c18e5bbdfa9",
+    "intercode": "c3e46d827cfc9d4c704ec078f7abf9f41e3191d8",
+    "xbow-validation": "a16cb1ba0701b20d63913846536fc7b0672082af",
+    "maleval": "c906fa1e83d89c5f2473f9ef4f93320382cae3df",
+    "droidbench": "a57fa6f42f278591695672f1aa8b37c275139370",
+    "ghera": "31dc21e922ecd327b6ec90a10a507aac7f813700",
+    "mobilecybench": "d196c46fb23d9f6ad6391819ea62d025e1b29693",
+    "mas-crackmes": "d27a4857b79289cdd88fda423f519f8cd4c42db1",
+    "mastg": "8bee312ba8fa45f7d617f0d806ac14920f2ad3d0",
+    "cybergym": "c6fe2027d39471375920b92cf1025e23a99ffda5",
+    "cybergym-e2e": "d0ae0f02e76ebc084389bf21e755f4b41ac9765a",
+    "fuzzingbrain-bench": "6010bb4f98524157a13a2a68c3b6921d44c7f830",
+    "crsbench": "b4ec940f93ab531d70425cd274696651a84bf5e8",
+    "oss-crs": "69cbcb6981f212fc125c7022eda880b4fdad02ce",
+    "sec-bench": "31eb43485a3de47da260be0f978528b1f2314415",
+    "sec-bench-pro": "da80928ee20dc417ca6a068a1213e1d9d279df20",
+    "calif-publications": "0a1c715b06477a32155329bd0c535f30c91bdabf",
 }
 DEPENDENCY_ORIGINS = {
     "job-bench-eval": "https://github.com/Job-Bench/job-bench-eval.git",
@@ -125,6 +146,27 @@ DEPENDENCY_ORIGINS = {
     "CRUST-bench": "https://github.com/anirudhkhatry/CRUST-bench.git",
     "AgentRE-Bench": "https://github.com/agentrebench/AgentRE-Bench.git",
     "BinaryAudit": "https://github.com/QuesmaOrg/BinaryAudit.git",
+    "autopenbench": "https://github.com/nguyenthdat/auto-pen-bench.git",
+    "bountybench": "https://github.com/nguyenthdat/bountybench.git",
+    "hptsa": "https://github.com/nguyenthdat/HPTSA.git",
+    "hackworld": "https://github.com/nguyenthdat/HackWorld.git",
+    "nyu-ctf-bench": "https://github.com/nguyenthdat/NYU_CTF_Bench.git",
+    "intercode": "https://github.com/nguyenthdat/intercode.git",
+    "xbow-validation": "https://github.com/nguyenthdat/validation-benchmarks.git",
+    "maleval": "https://github.com/nguyenthdat/MalEval.git",
+    "droidbench": "https://github.com/nguyenthdat/DroidBench.git",
+    "ghera": "https://github.com/nguyenthdat/android-app-vulnerability-benchmarks.git",
+    "mobilecybench": "https://github.com/nguyenthdat/mobilecybench.git",
+    "mas-crackmes": "https://github.com/nguyenthdat/mas-crackmes.git",
+    "mastg": "https://github.com/nguyenthdat/mastg.git",
+    "cybergym": "https://github.com/nguyenthdat/cybergym.git",
+    "cybergym-e2e": "https://github.com/nguyenthdat/cybergym-e2e.git",
+    "fuzzingbrain-bench": "https://github.com/nguyenthdat/FuzzingBrain-Bench.git",
+    "crsbench": "https://github.com/nguyenthdat/CRSBench.git",
+    "oss-crs": "https://github.com/nguyenthdat/oss-crs.git",
+    "sec-bench": "https://github.com/nguyenthdat/SEC-bench.git",
+    "sec-bench-pro": "https://github.com/nguyenthdat/SEC-bench-Pro.git",
+    "calif-publications": "https://github.com/nguyenthdat/publications.git",
 }
 
 
@@ -163,6 +205,90 @@ def agentre_repo() -> Path:
 
 def binaudit_repo() -> Path:
     return DEPENDENCIES / "BinaryAudit"
+
+
+def autopenbench_repo() -> Path:
+    return DEPENDENCIES / "autopenbench"
+
+
+def bountybench_repo() -> Path:
+    return DEPENDENCIES / "bountybench"
+
+
+def hptsa_repo() -> Path:
+    return DEPENDENCIES / "hptsa"
+
+
+def hackworld_repo() -> Path:
+    return DEPENDENCIES / "hackworld"
+
+
+def nyuctf_repo() -> Path:
+    return DEPENDENCIES / "nyu-ctf-bench"
+
+
+def intercode_repo() -> Path:
+    return DEPENDENCIES / "intercode"
+
+
+def xbow_repo() -> Path:
+    return DEPENDENCIES / "xbow-validation"
+
+
+def maleval_repo() -> Path:
+    return DEPENDENCIES / "maleval"
+
+
+def droidbench_repo() -> Path:
+    return DEPENDENCIES / "droidbench"
+
+
+def ghera_repo() -> Path:
+    return DEPENDENCIES / "ghera"
+
+
+def mobilecybench_repo() -> Path:
+    return DEPENDENCIES / "mobilecybench"
+
+
+def mas_crackmes_repo() -> Path:
+    return DEPENDENCIES / "mas-crackmes"
+
+
+def mastg_repo() -> Path:
+    return DEPENDENCIES / "mastg"
+
+
+def cybergym_repo() -> Path:
+    return DEPENDENCIES / "cybergym"
+
+
+def cybergym_e2e_repo() -> Path:
+    return DEPENDENCIES / "cybergym-e2e"
+
+
+def fuzzingbrain_repo() -> Path:
+    return DEPENDENCIES / "fuzzingbrain-bench"
+
+
+def crsbench_repo() -> Path:
+    return DEPENDENCIES / "crsbench"
+
+
+def oss_crs_repo() -> Path:
+    return DEPENDENCIES / "oss-crs"
+
+
+def secbench_repo() -> Path:
+    return DEPENDENCIES / "sec-bench"
+
+
+def secbench_pro_repo() -> Path:
+    return DEPENDENCIES / "sec-bench-pro"
+
+
+def calif_publications_repo() -> Path:
+    return DEPENDENCIES / "calif-publications"
 
 OPENCODE_DIR = DEPENDENCIES / "opencode"
 BUN = DEPENDENCIES / "tools" / "node_modules" / ".bin" / "bun"
