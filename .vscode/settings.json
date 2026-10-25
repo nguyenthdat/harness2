@@ -35,14 +35,14 @@
     "dependencies/xbow-validation"
   ],
   "files.watcherExclude": {
-    "**/dependencies/**": true,
+    "**/dependencies/*/**": true,
     "**/runs/**": true,
     "**/.venv/**": true,
     "**/.git/objects/**": true,
     "**/.git/subtree-cache/**": true
   },
   "search.exclude": {
-    "**/dependencies/**": true,
+    "**/dependencies/*/**": true,
     "**/runs/**": true,
     "**/.venv/**": true,
     "**/node_modules/**": true

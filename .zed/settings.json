@@ -2,7 +2,7 @@
   "file_scan_exclusions": [
     "**/.git",
     "**/.venv",
-    "**/dependencies",
+    "dependencies/*/**",
     "**/runs",
     "**/node_modules"
   ],
