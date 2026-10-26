@@ -67,6 +67,15 @@ load_dotenv()
 def env(name: str, default=None):
     """Env override where a set-but-empty variable is the same as an unset one."""
     return os.environ.get(name) or default
+try:
+    _rel_config_dir = ROOT.relative_to(Path.home()).as_posix()
+except ValueError:
+    _rel_config_dir = ""
+
+PI_CONFIG_DIR = env("PI_CONFIG_DIR", _rel_config_dir)
+if PI_CONFIG_DIR:
+    os.environ.setdefault("PI_CONFIG_DIR", PI_CONFIG_DIR)
+
 
 
 def env_int(name: str, default: int) -> int:

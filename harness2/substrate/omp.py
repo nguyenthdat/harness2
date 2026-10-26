@@ -184,7 +184,8 @@ def _discover_profile_roles_and_agents(profile: str | None) -> tuple[set[str], s
     prof = profile or config.OMP_PROFILE
     paths_to_check: list[Path] = []
     if prof and prof != "default":
-        prof_agent = Path.home() / ".omp" / "profiles" / prof / "agent"
+        local_agent = config.ROOT / "profiles" / prof / "agent"
+        prof_agent = local_agent if local_agent.is_dir() else (Path.home() / ".omp" / "profiles" / prof / "agent")
         paths_to_check.append(prof_agent / "config.yml")
         paths_to_check.append(prof_agent / "config.yaml")
         agent_dir = prof_agent / "agents"
@@ -237,6 +238,10 @@ def overlay(model: str, agents: Iterable[str] = (), profile: str | None = None) 
         "task": {"agentModelOverrides": pinned_agents},
         "async": {"enabled": False},
         "tools": {"approvalMode": "yolo"},
+        "web_search": {"enabled": False},
+        "fetch": {"enabled": False},
+        "browser": {"enabled": False},
+        "exa": {"enabled": False},
     }
 
 def agent_file(name: str, body: str) -> str:
