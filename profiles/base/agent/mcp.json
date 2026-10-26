@@ -6,10 +6,10 @@
       "command": "bunx",
       "args": ["rea-agents@6.4.0", "mcp"],
       "env": {
-        "GHIDRA_INSTALL_DIR": "/opt/homebrew/opt/ghidra/libexec",
-        "JAVA_HOME": "/Users/dat.nguyen/.sdkman/candidates/java/25.0.4-jbr",
+        "GHIDRA_INSTALL_DIR": "${GHIDRA_INSTALL_DIR}",
+        "JAVA_HOME": "${JAVA_HOME}",
         "REA_ANALYSIS_PROVIDER": "ghidra",
-        "REA_JADX_MCP_JAR": "/Users/datnguyen/.local/share/jadx/jadx-headless-mcp-0.7.1-all.jar"
+        "REA_JADX_MCP_JAR": "${REA_JADX_MCP_JAR}"
       }
     }
   }

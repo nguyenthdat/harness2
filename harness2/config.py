@@ -76,6 +76,10 @@ PI_CONFIG_DIR = env("PI_CONFIG_DIR", _rel_config_dir)
 if PI_CONFIG_DIR:
     os.environ.setdefault("PI_CONFIG_DIR", PI_CONFIG_DIR)
 
+REA_SCRIPT = ROOT / "scripts" / "run_rea_mcp.sh"
+if REA_SCRIPT.is_file():
+    os.environ.setdefault("HARNESS2_REA_SCRIPT", str(REA_SCRIPT))
+
 
 
 def env_int(name: str, default: int) -> int:
