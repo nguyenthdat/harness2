@@ -31,6 +31,7 @@ PATCHES = {
     "opencode": "opencode-compat.diff",
     "job-bench-eval": "job-bench-eval-judge.diff",
     "harvey-labs": "harvey-labs-judge-vertex-anthropic.diff",
+    "workbuddy-bench": "workbuddy-bench-runtime.diff",
 }
 
 RUNNERS = (
@@ -38,6 +39,95 @@ RUNNERS = (
     "lab_runner/opencode/run_opencode.py",
     "wb_runner/agents/oc_agent.py",
 )
+
+BENCHMARK_NAMES: dict[str, str] = {
+    # Core
+    "jb": "job-bench-eval",
+    "job-bench-eval": "job-bench-eval",
+    "wb": "workbuddy-bench",
+    "workbuddy-bench": "workbuddy-bench",
+    "lab": "harvey-labs",
+    "harvey-labs": "harvey-labs",
+    "opencode": "opencode",
+    "cve": "cve-bench",
+    "cve-bench": "cve-bench",
+    "cyber": "cybench",
+    "cybench": "cybench",
+    "rswe": "Rust-SWE-Bench",
+    "rustswe": "Rust-SWE-Bench",
+    "Rust-SWE-Bench": "Rust-SWE-Bench",
+    "crust": "CRUST-bench",
+    "CRUST-bench": "CRUST-bench",
+    "agentre": "AgentRE-Bench",
+    "AgentRE-Bench": "AgentRE-Bench",
+    "binaudit": "BinaryAudit",
+    "BinaryAudit": "BinaryAudit",
+    # Webapp pentest
+    "autopenbench": "autopenbench",
+    "auto-pen-bench": "autopenbench",
+    "bountybench": "bountybench",
+    "hptsa": "hptsa",
+    "HPTSA": "hptsa",
+    "hackworld": "hackworld",
+    "HackWorld": "hackworld",
+    "xbow": "xbow-validation",
+    "xbow-validation": "xbow-validation",
+    # RE & CTF
+    "nyuctf": "nyu-ctf-bench",
+    "nyu-ctf-bench": "nyu-ctf-bench",
+    "nyu_ctf_bench": "nyu-ctf-bench",
+    "intercode": "intercode",
+    # Mobile RE & Pentest
+    "maleval": "maleval",
+    "MalEval": "maleval",
+    "droidbench": "droidbench",
+    "DroidBench": "droidbench",
+    "ghera": "ghera",
+    "mobilecybench": "mobilecybench",
+    "mas-crackmes": "mas-crackmes",
+    "mastg": "mastg",
+    # Vulnerability research (zero-day discovery)
+    "cybergym": "cybergym",
+    "cybergym-e2e": "cybergym-e2e",
+    "fuzzingbrain": "fuzzingbrain-bench",
+    "fuzzingbrain-bench": "fuzzingbrain-bench",
+    "FuzzingBrain-Bench": "fuzzingbrain-bench",
+    "crsbench": "crsbench",
+    "CRSBench": "crsbench",
+    "oss-crs": "oss-crs",
+    "oss_crs": "oss-crs",
+    "secbench": "sec-bench",
+    "sec-bench": "sec-bench",
+    "SEC-bench": "sec-bench",
+    "secbenchpro": "sec-bench-pro",
+    "sec-bench-pro": "sec-bench-pro",
+    "SEC-bench-Pro": "sec-bench-pro",
+    "calif": "calif-publications",
+    "calif-publications": "calif-publications",
+}
+
+
+def setup_environment(repo: Path, *, dry_run: bool = False):
+    """Set up Python virtual environment and dependencies for a repository using uv."""
+    repo = Path(repo)
+    pyproject = repo / "pyproject.toml"
+    requirements = repo / "requirements.txt"
+    setup_py = repo / "setup.py"
+
+    if pyproject.is_file():
+        run(["uv", "sync", "--locked", "--python", "3.12"], cwd=repo, dry_run=dry_run)
+    elif requirements.is_file() or setup_py.is_file():
+        venv_dir = repo / ".venv"
+        run(["uv", "venv", str(venv_dir), "--python", "3.12"], cwd=repo, dry_run=dry_run)
+        py_bin = venv_dir / "bin" / "python"
+        if requirements.is_file():
+            run(["uv", "pip", "install", "--python", str(py_bin), "-r", "requirements.txt"], cwd=repo, dry_run=dry_run)
+        if setup_py.is_file():
+            run(["uv", "pip", "install", "--python", str(py_bin), "-e", "."], cwd=repo, dry_run=dry_run)
+    elif dry_run:
+        venv_dir = repo / ".venv"
+        run(["uv", "venv", str(venv_dir), "--python", "3.12"], cwd=repo, dry_run=True)
+        run(["uv", "pip", "install", "--python", str(venv_dir / "bin" / "python"), "-r", "requirements.txt"], cwd=repo, dry_run=True)
 
 
 def missing_runners() -> str:

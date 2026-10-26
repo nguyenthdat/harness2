@@ -1,4 +1,5 @@
 {
+  "explorer.excludeGitIgnore": false,
   "git.autoRepositoryDetection": false,
   "git.repositoryScanMaxDepth": 0,
   "git.ignoredRepositories": [

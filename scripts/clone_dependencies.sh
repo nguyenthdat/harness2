@@ -3,33 +3,45 @@ set -euo pipefail
 
 # Clone or update standalone dependencies for harness2 without git submodules.
 # Usage:
-#   scripts/clone_dependencies.sh [--dry-run] [dependency_name]
+#   scripts/clone_dependencies.sh [--dry-run] [-j|--jobs N] [dependency_name]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEPENDENCIES_DIR="${ROOT_DIR}/dependencies"
 
 DRY_RUN=false
+JOBS=8
 TARGET_DEP=""
 
-for arg in "$@"; do
-    case "$arg" in
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        -j|--jobs)
+            if [[ $# -lt 2 || ! "$2" =~ ^[0-9]+$ || "$2" -le 0 ]]; then
+                echo "Error: $1 requires a positive integer argument" >&2
+                exit 1
+            fi
+            JOBS="$2"
+            shift 2
             ;;
         -h|--help)
-            echo "Usage: $0 [--dry-run] [dependency_name]"
+            echo "Usage: $0 [--dry-run] [-j|--jobs N] [dependency_name]"
             echo ""
             echo "Options:"
-            echo "  --dry-run    Print planned clone / fetch operations without executing"
-            echo "  [name]       Target specific dependency (e.g. autopenbench, workbuddy-bench)"
+            echo "  --dry-run      Print planned clone / fetch operations without executing"
+            echo "  -j, --jobs N   Number of parallel clone/fetch jobs (default: 8)"
+            echo "  [name]         Target specific dependency (e.g. autopenbench, workbuddy-bench)"
             exit 0
             ;;
         *)
             if [[ -z "$TARGET_DEP" ]]; then
-                TARGET_DEP="$arg"
+                TARGET_DEP="$1"
+                shift
             else
-                echo "Error: Unknown argument '$arg'" >&2
+                echo "Error: Unknown argument '$1'" >&2
                 exit 1
             fi
             ;;
@@ -73,22 +85,26 @@ DEPS=(
 
 mkdir -p "${DEPENDENCIES_DIR}"
 
-matched=0
-for entry in "${DEPS[@]}"; do
-    IFS="|" read -r name url pin <<< "$entry"
-    if [[ -n "$TARGET_DEP" && "$TARGET_DEP" != "$name" ]]; then
-        continue
-    fi
-    matched=$((matched + 1))
-    dest="${DEPENDENCIES_DIR}/${name}"
+sync_dep() {
+    local name="$1"
+    local url="$2"
+    local pin="$3"
+    local dest="${DEPENDENCIES_DIR}/${name}"
 
     if [[ -d "$dest/.git" || -f "$dest/.git" ]]; then
+        local current_head
+        current_head="$(git -C "$dest" rev-parse HEAD 2>/dev/null || true)"
+        if [[ "$current_head" == "$pin" ]]; then
+            echo "[UP-TO-DATE] ${name} (${pin:0:8})"
+            return 0
+        fi
+
         echo "[UPDATE] ${name} (${dest})"
         if [[ "$DRY_RUN" == "true" ]]; then
             echo "  (dry-run) git -C '${dest}' fetch origin"
             echo "  (dry-run) git -C '${dest}' checkout '${pin}'"
         else
-            # Ensure remote matches origin URL if needed
+            local current_remote
             current_remote="$(git -C "$dest" remote get-url origin 2>/dev/null || true)"
             if [[ -n "$current_remote" && "$current_remote" != "$url" ]]; then
                 echo "  Updating origin URL: ${current_remote} -> ${url}"
@@ -98,7 +114,6 @@ for entry in "${DEPS[@]}"; do
             git -C "$dest" checkout "$pin" --quiet || git -C "$dest" checkout "$pin"
         fi
     elif [[ -d "$dest" ]]; then
-        # If directory is empty, clone into it rather than skipping
         if [[ -z "$(ls -A "$dest" 2>/dev/null || true)" ]]; then
             echo "[CLONE] ${name} from ${url} (into empty directory ${dest})"
             if [[ "$DRY_RUN" == "true" ]]; then
@@ -121,6 +136,18 @@ for entry in "${DEPS[@]}"; do
             git -C "$dest" checkout "$pin" --quiet || git -C "$dest" checkout "$pin"
         fi
     fi
+}
+
+matched=0
+declare -a target_entries=()
+
+for entry in "${DEPS[@]}"; do
+    IFS="|" read -r name url pin <<< "$entry"
+    if [[ -n "$TARGET_DEP" && "$TARGET_DEP" != "$name" ]]; then
+        continue
+    fi
+    matched=$((matched + 1))
+    target_entries+=("$entry")
 done
 
 if [[ $matched -eq 0 && -n "$TARGET_DEP" ]]; then
@@ -130,6 +157,34 @@ if [[ $matched -eq 0 && -n "$TARGET_DEP" ]]; then
         IFS="|" read -r name _ _ <<< "$entry"
         echo "  - $name"
     done
+    exit 1
+fi
+
+running=0
+failed=0
+
+for entry in "${target_entries[@]}"; do
+    IFS="|" read -r name url pin <<< "$entry"
+
+    if [[ "$DRY_RUN" == "true" || "$JOBS" -le 1 ]]; then
+        sync_dep "$name" "$url" "$pin" || failed=1
+    else
+        sync_dep "$name" "$url" "$pin" &
+        running=$((running + 1))
+        if [[ $running -ge $JOBS ]]; then
+            wait -n || failed=1
+            running=$((running - 1))
+        fi
+    fi
+done
+
+while [[ $running -gt 0 ]]; do
+    wait -n || failed=1
+    running=$((running - 1))
+done
+
+if [[ $failed -ne 0 ]]; then
+    echo "Error: One or more dependency operations failed." >&2
     exit 1
 fi
 
