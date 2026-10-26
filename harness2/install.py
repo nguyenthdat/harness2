@@ -15,7 +15,7 @@
 """Repeatable installation of benchmark tools and release-owned runner overlays."""
 
 from __future__ import annotations
-
+import os
 import json
 import shlex
 import shutil
@@ -24,7 +24,6 @@ import subprocess
 import tempfile
 import tomllib
 from pathlib import Path
-
 from . import config
 
 PATCHES = {
@@ -113,9 +112,11 @@ def setup_environment(repo: Path, *, dry_run: bool = False):
     pyproject = repo / "pyproject.toml"
     requirements = repo / "requirements.txt"
     setup_py = repo / "setup.py"
-
     if pyproject.is_file():
-        run(["uv", "sync", "--locked", "--python", "3.12"], cwd=repo, dry_run=dry_run)
+        if (repo / "uv.lock").is_file():
+            run(["uv", "sync", "--locked", "--python", "3.12"], cwd=repo, dry_run=dry_run)
+        else:
+            run(["uv", "sync", "--python", "3.12"], cwd=repo, dry_run=dry_run)
     elif requirements.is_file() or setup_py.is_file():
         venv_dir = repo / ".venv"
         run(["uv", "venv", str(venv_dir), "--python", "3.12"], cwd=repo, dry_run=dry_run)
@@ -152,8 +153,10 @@ def run(cmd, *, cwd=None, dry_run=False):
     cmd = [str(c) for c in cmd]
     print((f"[{cwd}] " if cwd else "") + shlex.join(cmd), flush=True)
     if not dry_run:
-        subprocess.run(cmd, cwd=cwd, check=True)
-
+        clean_env = dict(os.environ)
+        clean_env.pop("VIRTUAL_ENV", None)
+        clean_env.pop("UV_PROJECT_ENVIRONMENT", None)
+        subprocess.run(cmd, cwd=cwd, env=clean_env, check=True)
 
 def clone(name: str, *, dry_run=False):
     repo = config.DEPENDENCIES / name
