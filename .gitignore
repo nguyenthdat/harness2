@@ -332,3 +332,7 @@ dependencies/rustbench/*.parquet
 **/node_modules/
 .DS_Store
 *.DS_Store
+
+profiles/**/*.db*
+profiles/**/sessions/
+profiles/**/.env
