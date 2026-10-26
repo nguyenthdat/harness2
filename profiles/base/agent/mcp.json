@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "codebase-memory-mcp": { "type": "stdio", "command": "codebase-memory-mcp" },
+    "basic-memory": { "type": "stdio", "command": "uvx", "args": ["basic-memory", "mcp"] },
+    "computer-use": {
+      "type": "stdio",
+      "command": "bunx",
+      "args": ["-y", "@zavora-ai/computer-use-mcp"]
+    },
+    "rea": {
+      "type": "stdio",
+      "command": "bunx",
+      "args": ["rea-agents@6.4.0", "mcp"],
+      "env": {
+        "GHIDRA_INSTALL_DIR": "/opt/homebrew/opt/ghidra/libexec",
+        "JAVA_HOME": "/Users/datnguyen/.sdkman/candidates/java/25.0.4-jbr",
+        "REA_ANALYSIS_PROVIDER": "ghidra",
+        "REA_JADX_MCP_JAR": "/Users/datnguyen/.local/share/jadx/jadx-headless-mcp-0.7.1-all.jar"
+      }
+    },
+    "jshook": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@jshookmcp/jshook@0.3.5"],
+      "env": { "MCP_TOOL_PROFILE": "search", "npm_config_omit": "optional" }
+    }
+  }
+}
