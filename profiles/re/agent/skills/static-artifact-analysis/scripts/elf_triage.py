@@ -23,10 +23,27 @@ import sys
 
 ET = {1: "REL", 2: "EXEC (non-PIE)", 3: "DYN (PIE/shared)", 4: "CORE"}
 MACH = {0x03: "i386", 0x28: "ARM", 0x3E: "x86-64", 0xB7: "AArch64"}
-PT = {1: "LOAD", 2: "DYNAMIC", 3: "INTERP", 6: "PHDR", 7: "TLS",
-      0x6474E550: "GNU_EH_FRAME", 0x6474E551: "GNU_STACK", 0x6474E552: "GNU_RELRO"}
-SHT = {1: "PROGBITS", 2: "SYMTAB", 3: "STRTAB", 4: "RELA", 8: "NOBITS",
-       9: "REL", 11: "DYNSYM", 14: "INIT_ARRAY", 15: "FINI_ARRAY"}
+PT = {
+    1: "LOAD",
+    2: "DYNAMIC",
+    3: "INTERP",
+    6: "PHDR",
+    7: "TLS",
+    0x6474E550: "GNU_EH_FRAME",
+    0x6474E551: "GNU_STACK",
+    0x6474E552: "GNU_RELRO",
+}
+SHT = {
+    1: "PROGBITS",
+    2: "SYMTAB",
+    3: "STRTAB",
+    4: "RELA",
+    8: "NOBITS",
+    9: "REL",
+    11: "DYNSYM",
+    14: "INIT_ARRAY",
+    15: "FINI_ARRAY",
+}
 STT = {0: "NOTYPE", 1: "OBJECT", 2: "FUNC", 3: "SECTION", 4: "FILE", 6: "TLS"}
 
 
@@ -51,13 +68,37 @@ class Elf:
         self.path = path
         e = self.endian
         if self.bits == 64:
-            (self.e_type, self.e_machine, _, self.entry, self.phoff, self.shoff,
-             _, _, self.phentsize, self.phnum, self.shentsize, self.shnum,
-             self.shstrndx) = struct.unpack_from(e + "HHIQQQIHHHHHH", d, 16)
+            (
+                self.e_type,
+                self.e_machine,
+                _,
+                self.entry,
+                self.phoff,
+                self.shoff,
+                _,
+                _,
+                self.phentsize,
+                self.phnum,
+                self.shentsize,
+                self.shnum,
+                self.shstrndx,
+            ) = struct.unpack_from(e + "HHIQQQIHHHHHH", d, 16)
         else:
-            (self.e_type, self.e_machine, _, self.entry, self.phoff, self.shoff,
-             _, _, self.phentsize, self.phnum, self.shentsize, self.shnum,
-             self.shstrndx) = struct.unpack_from(e + "HHIIIIIHHHHHH", d, 16)
+            (
+                self.e_type,
+                self.e_machine,
+                _,
+                self.entry,
+                self.phoff,
+                self.shoff,
+                _,
+                _,
+                self.phentsize,
+                self.phnum,
+                self.shentsize,
+                self.shnum,
+                self.shstrndx,
+            ) = struct.unpack_from(e + "HHIIIIIHHHHHH", d, 16)
         self.sections = self._sections()
         self.phdrs = self._phdrs()
         self.symtab = self._symbols()
@@ -82,9 +123,20 @@ class Elf:
             else:
                 vals = struct.unpack_from(self.endian + "IIIIIIIIII", self.data, off)
             name, typ, flags, addr, offset, size, link, info, align, entsize = vals
-            out.append({"name": name, "type": typ, "flags": flags, "addr": addr,
-                        "offset": offset, "size": size, "link": link,
-                        "info": info, "align": align, "entsize": entsize})
+            out.append(
+                {
+                    "name": name,
+                    "type": typ,
+                    "flags": flags,
+                    "addr": addr,
+                    "offset": offset,
+                    "size": size,
+                    "link": link,
+                    "info": info,
+                    "align": align,
+                    "entsize": entsize,
+                }
+            )
         shstr = out[self.shstrndx] if 0 <= self.shstrndx < len(out) else None
         for sec in out:
             sec["sname"] = self._cstr(shstr, sec["name"])
@@ -95,34 +147,52 @@ class Elf:
         for i in range(self.phnum):
             off = self.phoff + i * self.phentsize
             if self.bits == 64:
-                typ, flags, offset, vaddr, paddr, filesz, memsz, align = \
-                    struct.unpack_from(self.endian + "IIQQQQQQ", self.data, off)
+                typ, flags, offset, vaddr, paddr, filesz, memsz, align = struct.unpack_from(
+                    self.endian + "IIQQQQQQ", self.data, off
+                )
             else:
-                typ, offset, vaddr, paddr, filesz, memsz, flags, align = \
-                    struct.unpack_from(self.endian + "IIIIIIII", self.data, off)
-            out.append({"type": typ, "flags": flags, "offset": offset,
-                        "vaddr": vaddr, "filesz": filesz, "memsz": memsz})
+                typ, offset, vaddr, paddr, filesz, memsz, flags, align = struct.unpack_from(
+                    self.endian + "IIIIIIII", self.data, off
+                )
+            out.append(
+                {
+                    "type": typ,
+                    "flags": flags,
+                    "offset": offset,
+                    "vaddr": vaddr,
+                    "filesz": filesz,
+                    "memsz": memsz,
+                }
+            )
         return out
 
     def _symbols(self):
         symtab = next((s for s in self.sections if s["type"] == 2), None)
         if not symtab or not symtab["entsize"]:
             return []
-        strtab = (self.sections[symtab["link"]]
-                  if symtab["link"] < len(self.sections) else None)
+        strtab = self.sections[symtab["link"]] if symtab["link"] < len(self.sections) else None
         count = symtab["size"] // symtab["entsize"]
         out = []
         for i in range(count):
             off = symtab["offset"] + i * symtab["entsize"]
             if self.bits == 64:
-                name, info, other, shndx, value, size = \
-                    struct.unpack_from(self.endian + "IBBHQQ", self.data, off)
+                name, info, other, shndx, value, size = struct.unpack_from(
+                    self.endian + "IBBHQQ", self.data, off
+                )
             else:
-                name, value, size, info, other, shndx = \
-                    struct.unpack_from(self.endian + "IIIBBH", self.data, off)
-            out.append({"name": self._cstr(strtab, name), "type": info & 0xF,
-                        "bind": info >> 4, "shndx": shndx, "value": value,
-                        "size": size})
+                name, value, size, info, other, shndx = struct.unpack_from(
+                    self.endian + "IIIBBH", self.data, off
+                )
+            out.append(
+                {
+                    "name": self._cstr(strtab, name),
+                    "type": info & 0xF,
+                    "bind": info >> 4,
+                    "shndx": shndx,
+                    "value": value,
+                    "size": size,
+                }
+            )
         return out
 
     def section_for(self, sym):
@@ -136,7 +206,7 @@ class Elf:
         start = sec["offset"] + (sym["value"] - sec["addr"])
         if start < 0 or start + sym["size"] > len(self.data):
             die("symbol %r bytes fall outside the file" % sym["name"])
-        return self.data[start:start + sym["size"]], start
+        return self.data[start : start + sym["size"]], start
 
     def find(self, name=None, rx=None):
         out = []
@@ -163,64 +233,97 @@ def entropy(b):
     if not b:
         return 0.0
     n = len(b)
-    return -sum((v / n) * math.log2(v / n)
-                for v in collections.Counter(b).values())
+    return -sum((v / n) * math.log2(v / n) for v in collections.Counter(b).values())
 
 
 def report(elf):
     d = elf.data
     print("== %s ==" % elf.path)
-    print("format      ELF%d %s %s, %s" % (
-        elf.bits, "LE" if elf.endian == "<" else "BE",
-        MACH.get(elf.e_machine, hex(elf.e_machine)),
-        ET.get(elf.e_type, str(elf.e_type))))
+    print(
+        "format      ELF%d %s %s, %s"
+        % (
+            elf.bits,
+            "LE" if elf.endian == "<" else "BE",
+            MACH.get(elf.e_machine, hex(elf.e_machine)),
+            ET.get(elf.e_type, str(elf.e_type)),
+        )
+    )
     print("file size   0x%x bytes" % len(d))
-    print("entry       0x%x   sections=%d  phdrs=%d  symbols=%d" % (
-        elf.entry, elf.shnum, elf.phnum, len(elf.symtab)))
+    print(
+        "entry       0x%x   sections=%d  phdrs=%d  symbols=%d"
+        % (elf.entry, elf.shnum, elf.phnum, len(elf.symtab))
+    )
 
     loads = [p for p in elf.phdrs if p["type"] == 1]
     if loads:
         deltas = sorted({p["vaddr"] - p["offset"] for p in loads})
         print("LOAD deltas %s" % ", ".join("0x%x" % x for x in deltas))
         if len(deltas) > 1:
-            print("  NOTE: more than one delta: translate per section with "
-                  "file_offset = sh_offset + (vma - sh_addr)")
+            print(
+                "  NOTE: more than one delta: translate per section with "
+                "file_offset = sh_offset + (vma - sh_addr)"
+            )
         for sec in elf.sections:
-            if sec["sname"] in (".text", ".rodata", ".data", ".data.rel.ro",
-                                ".init_array") and sec["size"]:
-                print("  %-12s VMA 0x%-8x file 0x%-7x delta 0x%x" % (
-                    sec["sname"], sec["addr"], sec["offset"],
-                    sec["addr"] - sec["offset"]))
+            if (
+                sec["sname"] in (".text", ".rodata", ".data", ".data.rel.ro", ".init_array")
+                and sec["size"]
+            ):
+                print(
+                    "  %-12s VMA 0x%-8x file 0x%-7x delta 0x%x"
+                    % (sec["sname"], sec["addr"], sec["offset"], sec["addr"] - sec["offset"])
+                )
 
     for p in elf.phdrs:
-        print("  PH %-10s off=0x%-7x vaddr=0x%-8x filesz=0x%-7x flags=%d" % (
-            PT.get(p["type"], hex(p["type"])), p["offset"], p["vaddr"],
-            p["filesz"], p["flags"]))
+        print(
+            "  PH %-10s off=0x%-7x vaddr=0x%-8x filesz=0x%-7x flags=%d"
+            % (PT.get(p["type"], hex(p["type"])), p["offset"], p["vaddr"], p["filesz"], p["flags"])
+        )
     stack = next((p for p in elf.phdrs if p["type"] == 0x6474E551), None)
     if stack:
-        print("  GNU_STACK flags=%d%s" % (
-            stack["flags"],
-            " (RWX/executable stack)" if stack["flags"] == 7 else ""))
+        print(
+            "  GNU_STACK flags=%d%s"
+            % (stack["flags"], " (RWX/executable stack)" if stack["flags"] == 7 else "")
+        )
 
     print("\n-- sections (name addr off size type) --")
     for sec in elf.sections:
-        if sec["sname"] in (".text", ".rodata", ".data", ".bss", ".init_array",
-                            ".fini_array", ".data.rel.ro", ".got", ".plt"):
-            print("  %-12s addr=0x%-8x off=0x%-7x size=0x%-7x %s" % (
-                sec["sname"], sec["addr"], sec["offset"], sec["size"],
-                SHT.get(sec["type"], str(sec["type"]))))
+        if sec["sname"] in (
+            ".text",
+            ".rodata",
+            ".data",
+            ".bss",
+            ".init_array",
+            ".fini_array",
+            ".data.rel.ro",
+            ".got",
+            ".plt",
+        ):
+            print(
+                "  %-12s addr=0x%-8x off=0x%-7x size=0x%-7x %s"
+                % (
+                    sec["sname"],
+                    sec["addr"],
+                    sec["offset"],
+                    sec["size"],
+                    SHT.get(sec["type"], str(sec["type"])),
+                )
+            )
 
     print("\n-- selected symbols --")
     seen = False
     for name in ("_start", "main", "__libc_start_main"):
         for sym in elf.find(name=name):
-            print("  %-24s %-8s value=0x%-8x size=0x%x" % (
-                sym["name"], STT.get(sym["type"], "?"), sym["value"], sym["size"]))
+            print(
+                "  %-24s %-8s value=0x%-8x size=0x%x"
+                % (sym["name"], STT.get(sym["type"], "?"), sym["value"], sym["size"])
+            )
             seen = True
     if not seen:
         print("  (none matched; use --find REGEX)")
-    print("  use --find REGEX for application symbols; globals are not "
-          "grouped under the source-file stt_file entry")
+    print(
+        "  use --find REGEX for application symbols; globals are not "
+        "grouped under the source-file stt_file entry"
+    )
 
 
 def report_find(elf, pattern):
@@ -232,9 +335,17 @@ def report_find(elf, pattern):
     print("-- symbols matching %r (%d) --" % (pattern, len(hits)))
     for sym in hits:
         sec = elf.section_for(sym)
-        print("  %-36s %-8s %-10s value=0x%-8x size=0x%-4x file=0x%x" % (
-            sym["name"], STT.get(sym["type"], "?"), sec["sname"],
-            sym["value"], sym["size"], sec["offset"] + (sym["value"] - sec["addr"])))
+        print(
+            "  %-36s %-8s %-10s value=0x%-8x size=0x%-4x file=0x%x"
+            % (
+                sym["name"],
+                STT.get(sym["type"], "?"),
+                sec["sname"],
+                sym["value"],
+                sym["size"],
+                sec["offset"] + (sym["value"] - sec["addr"]),
+            )
+        )
 
 
 def report_dump(elf, names):
@@ -247,9 +358,17 @@ def report_dump(elf, names):
         sym = syms[0]
         raw, foff = elf.symbol_bytes(sym)
         shown = raw if len(raw) <= 128 else raw[:128]
-        print("  %-28s addr=0x%-8x off=0x%-7x size=0x%-4x %s%s" % (
-            sym["name"], sym["value"], foff, sym["size"], shown.hex(),
-            "..." if len(raw) > 128 else ""))
+        print(
+            "  %-28s addr=0x%-8x off=0x%-7x size=0x%-4x %s%s"
+            % (
+                sym["name"],
+                sym["value"],
+                foff,
+                sym["size"],
+                shown.hex(),
+                "..." if len(raw) > 128 else "",
+            )
+        )
 
 
 def report_xor(elf, blob_name, key_name, key_hex):
@@ -273,25 +392,32 @@ def report_xor(elf, blob_name, key_name, key_hex):
     if not key:
         die("empty key")
     dec = bytes(raw[i] ^ key[i % len(key)] for i in range(len(raw)))
-    print("blob        %s addr=0x%x file_off=0x%x size=%d" % (
-        blob_name, blob["value"], foff, len(raw)))
+    print(
+        "blob        %s addr=0x%x file_off=0x%x size=%d"
+        % (blob_name, blob["value"], foff, len(raw))
+    )
     print("key         %s (%d bytes): %s" % (key_src, len(key), key.hex()))
     print("cipher_hex  %s" % raw.hex())
     print("decoded_hex %s" % dec.hex())
     print("decoded_asc %s" % projection(dec))
     print("printable   %.2f   entropy %.2f" % (printable_ratio(dec), entropy(dec)))
-    print("syscall?    0f=%s  0f05=%s  cd80=%s" % (
-        b"\x0f" in dec, b"\x0f\x05" in dec, b"\xcd\x80" in dec))
+    print(
+        "syscall?    0f=%s  0f05=%s  cd80=%s"
+        % (b"\x0f" in dec, b"\x0f\x05" in dec, b"\xcd\x80" in dec)
+    )
     if len(raw) % len(key) == 0 and len(raw) >= 2 * len(key):
-        b0 = raw[:len(key)]
+        b0 = raw[: len(key)]
         for blk in range(1, len(raw) // len(key)):
-            cb = raw[blk * len(key):(blk + 1) * len(key)]
+            cb = raw[blk * len(key) : (blk + 1) * len(key)]
             deltas = {a ^ b for a, b in zip(cb, b0)}
-            print("block%d^block0 %s" % (
-                blk, "constant 0x%02x" % deltas.pop()
-                if len(deltas) == 1 else "varies"))
-    print("classification aid: printable high + no syscall bytes -> text; "
-          "syscall bytes + plausible flow -> code; neither -> data blob")
+            print(
+                "block%d^block0 %s"
+                % (blk, "constant 0x%02x" % deltas.pop() if len(deltas) == 1 else "varies")
+            )
+    print(
+        "classification aid: printable high + no syscall bytes -> text; "
+        "syscall bytes + plausible flow -> code; neither -> data blob"
+    )
 
 
 def main():

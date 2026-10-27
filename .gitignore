@@ -336,3 +336,4 @@ dependencies/rustbench/*.parquet
 profiles/**/*.db*
 profiles/**/sessions/
 profiles/**/.env
+*.db*
