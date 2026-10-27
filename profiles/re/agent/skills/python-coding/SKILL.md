@@ -1,5 +1,5 @@
 ---
-name: python
+name: python-coding
 description: >
   Comprehensive Python coding guidelines with 76 rules across 13 categories.
   Use when writing, reviewing, or refactoring Python code. Covers project detection,
@@ -19,7 +19,7 @@ metadata:
     - Polars, Granian, and PyO3/Maturin documentation
 ---
 
-# Python Best Practices
+# Python coding
 
 Comprehensive guide for writing robust, type-safe, idiomatic, and highly performant Python code. Contains 76 rules across 13 categories, prioritized by impact to guide code generation, refactoring, and review across Python 3.9 through Python 3.14+.
 

@@ -229,6 +229,15 @@ ví dụ `~/.omp/profiles/coder/agent/`. Chuyển từng thành phần bằng ta
 | `scripts/<name>.py` | `skills/<skill>/scripts/<name>.py` | Profile không có `scripts/` theo workspace; sửa đường dẫn trong rule hoặc skill gọi nó |
 | `.omp/extensions/<name>.ts` | `extensions/<name>.ts` | Được nạp ở mọi phiên; đọc kỹ trước khi chép |
 
+RE profile của repository giữ sáu skill với tên chuẩn trong `profiles/re/agent/skills/`:
+[c-to-rust-port](../profiles/re/agent/skills/c-to-rust-port/SKILL.md),
+[python-coding](../profiles/re/agent/skills/python-coding/SKILL.md),
+[repository-change](../profiles/re/agent/skills/repository-change/SKILL.md),
+[reverse-engineering](../profiles/re/agent/skills/reverse-engineering/SKILL.md),
+[rust-coding](../profiles/re/agent/skills/rust-coding/SKILL.md) và
+[static-artifact-analysis](../profiles/re/agent/skills/static-artifact-analysis/SKILL.md).
+Tên thư mục trùng với trường YAML `name`; đọc skill qua `skill://<name>`.
+
 ```bash
 E=$HARNESS2_RUNS_DIR/jb/library/jb/k1-omp/agg/statisticians/harnesses/statisticians__task1
 P=~/.omp/profiles/coder/agent

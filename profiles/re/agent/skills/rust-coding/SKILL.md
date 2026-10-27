@@ -1,5 +1,5 @@
 ---
-name: rust
+name: rust-coding
 description: >
   Comprehensive Rust coding guidelines with 273 rules across 29 categories.
   Use when writing, reviewing, or refactoring Rust code. Covers ownership,
@@ -21,7 +21,7 @@ metadata:
     - Rust Inline Assembly Specification (RFC 2873)
 ---
 
-# Rust Best Practices
+# Rust coding
 
 Comprehensive guide for writing high-quality, idiomatic, and highly optimized Rust code. Contains 273 rules across 29 categories, prioritized by impact to guide LLMs in code generation and refactoring. Current for Rust 1.96 (2024 edition).
 

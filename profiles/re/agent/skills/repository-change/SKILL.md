@@ -1,5 +1,5 @@
 ---
-name: repo-change
+name: repository-change
 description: Read before changing code in this repository — fixes, API contracts, features, refactors. Covers locating the target and its callers, reproducing behavior, keeping the diff scoped, testing with throwaway scripts, and reviewing the final change.
 ---
 

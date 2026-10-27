@@ -64,6 +64,27 @@ task:
 theme:
   dark: graphite
   light: light
+ida:
+  enabled: true
+  python: ${OMP_IDA_PYTHON}
+  installDir: ${IDA_INSTALLDIR}
+  maxOpen: 4
+  idleCloseSec: 900
+  # remoteDebug:
+  #   defaultPort: 23946
+  #   connectTimeoutMs: 3000
+  #   networkCidr: "10.211.55.0/24"
+  #   maxConcurrentConnections: 2
+  #   guests:
+  #     ubuntu:
+  #       ip: "10.211.55.31"
+  #       stub: "linux_server64"
+  #     winbase:
+  #       ip: "10.211.55.22"
+  #       stub: "win64_remote.exe"
+  #     macos:
+  #       ip: "10.211.55.32"
+  #       stub: "mac_server_arm"
 setupVersion: 2
 composer:
   shape: box

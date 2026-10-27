@@ -1,10 +1,10 @@
 # Standing Workflow Triggers
 
-- For repository changes, bug fixes, or API contract updates: read `skill://repo-change` before editing.
-- For Rust tasks: read `skill://rust`.
-- For Python tasks: read `skill://python`.
+- For repository changes, bug fixes, or API contract updates: read `skill://repository-change` before editing.
+- For Rust tasks: read `skill://rust-coding`.
+- For Python tasks: read `skill://python-coding`.
 - For C-to-safe-Rust transpilation: read `skill://c-to-rust-port`.
-- For static binary analysis or reverse engineering: read `skill://static-artifact-analysis` and `skill://reverse-engineer-anything`.
+- For static binary analysis or reverse engineering: read `skill://static-artifact-analysis` and `skill://reverse-engineering`.
 
 <!-- codebase-memory-mcp:start -->
 # Codebase Memory

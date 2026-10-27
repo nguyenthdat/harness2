@@ -1,11 +1,11 @@
 ---
-name: reverse-engineer-anything
+name: reverse-engineering
 description: Reverse engineer native, managed, Electron/JavaScript, packaged, firmware, and browser targets with REA. Use shipped-artifact or requested runtime evidence to explain features, compare versions, decompile code, or guide a reconstruction. Skip REA for ordinary source-repository architecture analysis.
 metadata:
   version: "45"
 ---
 
-# REA
+# Reverse engineering
 
 Use REA when a claim depends on a shipped binary or package, decompilation,
 passive application runtime evidence, or comparison with
