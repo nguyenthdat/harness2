@@ -260,6 +260,99 @@ Nên chuyển gì:
   `scripts/` và `.omp/` ở gốc, mỗi `sub_agents/<name>/AGENT.md` chuyển thành
   `.omp/agents/<name>.md`.
 
+## 8. IDA native và IDA MCP chính thức trong RE profile
+
+`profiles/re/agent/config.yml` bật tool native `ida` và các chế độ đọc binary
+của OMP. `profiles/re/agent/mcp.json` kết nối thêm
+[IDA MCP chính thức của Hex-Rays](https://docs.hex-rays.com/add-ons/mcp/overview),
+upstream [HexRaysSA/ida-mcp](https://github.com/HexRaysSA/ida-mcp), không phải
+server cộng đồng `ida-pro-mcp`. Cấu hình REA/Ghidra được giữ nguyên.
+
+IDA native giữ Python đã yêu cầu: `~/opswat/.idapro/.venv/bin/python`;
+MCP gọi trực tiếp executable `ida-mcp` được cài riêng bằng `uv tool install`.
+Bộ đã kiểm tra: OMP 18.13.1, IDA Pro 9.4.260713, Python 3.13.16 arm64,
+`ida-domain` 0.5.1 và `ida-mcp` 20261023.0.2. MCP yêu cầu IDA 9.4+ có idalib,
+Python 3.11+, Git và uv. Cần license IDA hợp lệ và tự chấp nhận điều khoản
+lần đầu nếu IDA yêu cầu; các bước này không cài license, không chấp nhận
+điều khoản hay mở GUI.
+
+Đặt **đường dẫn tuyệt đối, không tham chiếu biến khác** trong file riêng tư
+`profiles/re/agent/.env` đã được gitignore:
+
+```dotenv
+OMP_IDA_PYTHON=/absolute/home/opswat/.idapro/.venv/bin/python
+IDADIR="/path/to/IDA Professional 9.4.app/Contents/MacOS"
+IDAPYTHON_VENV_EXECUTABLE=/absolute/home/opswat/.idapro/.venv/bin/python
+```
+
+Trên Linux, `IDADIR` là thư mục chứa `libidalib.so`; trên macOS là
+`Contents/MacOS` chứa `libidalib.dylib`. Không dùng tên cũ `IDA_INSTALLDIR`.
+Không ghi `$HOME` hoặc `${BIEN_KHAC}` trong dotenv của profile vì parser OMP
+giữ nguyên chúng. Giữ biến IDA trong profile này, không export toàn máy qua
+file khởi động shell.
+
+Giữ venv native hiện có; cài CLI MCP riêng và bảo đảm `ida-mcp` nằm trong
+`PATH` của OMP. Các phiên bản đã kiểm tra:
+
+```bash
+export OMP_IDA_PYTHON="$HOME/opswat/.idapro/.venv/bin/python"
+uv pip install --python "$OMP_IDA_PYTHON" ida-domain==0.5.1 idapro==0.0.10
+uv tool install ida-mcp==20261023.0.2
+```
+
+`idapyswitch` chọn **shared library của Python gốc**, không nhận đường dẫn
+thư mục venv hay `bin/python`. Sau khi export `IDADIR` trong shell setup:
+
+```bash
+LIBPYTHON=$("$OMP_IDA_PYTHON" -c 'import pathlib, sysconfig; print(pathlib.Path(sysconfig.get_config_var("LIBDIR")) / sysconfig.get_config_var("LDLIBRARY"))')
+"$IDADIR/idapyswitch" --force-path "$LIBPYTHON"
+export IDAPYTHON_VENV_EXECUTABLE="$OMP_IDA_PYTHON"
+# Chỉ đọc lại lựa chọn, không chuyển lần nữa:
+"$OMP_IDA_PYTHON" -c 'import idapro, ida_registry; print(ida_registry.reg_read_string("Python3TargetDLL"))'
+```
+
+Library và venv phải trùng Python major/minor và kiến trúc CPU.
+`IDAPYTHON_VENV_EXECUTABLE` mới đưa package của venv vào IDAPython;
+`idapyswitch` một mình không làm việc đó. Finder/Dock không nhận biến từ
+shell/profile này; setup không sửa `launchctl` toàn máy và không cài GUI plugin.
+
+OMP 18.13.1 **không** nội suy `${VAR}` trong `ida.python` hoặc `ida.installDir`.
+Vì vậy native dùng đường dẫn `~` được OMP hỗ trợ; nếu đổi venv phải đổi cả
+setting này. Bỏ `installDir` để native đọc `IDADIR`. Nội suy `${VAR}` của MCP
+chỉ thấy môi trường process Bun, nên có thể bỏ sót dotenv của profile khi
+chạy ngoài repo. Entry IDA MCP dùng lookup tên biến thuần trong `env` của OMP
+và chạy thẳng `ida-mcp stdio --agent=omp-re --idle-timeout=900`, không qua
+shell hay shim module Python. `IDAPYTHON_VENV_EXECUTABLE` vẫn lấy giá trị
+`OMP_IDA_PYTHON` từ profile; không cần mapping MCP `OMP_IDA_PYTHON` riêng.
+
+MCP chạy stdio, không mở HTTP listener không có xác thực.
+`IDA_NEXUS_IDALIB_ONLY=1` giữ worker headless. CLI khởi chạy từ môi trường tool
+của uv; với `IDAPYTHON_VENV_EXECUTABLE` được giữ lại, worker đã kiểm tra báo
+`sys.executable`/`sys.prefix` là venv native, nhưng `idapro` và `ida_nexus`
+được nạp từ môi trường tool của uv.
+`--idle-timeout=900` thu hồi lease MCP khi rảnh, độc lập với
+`ida.idleCloseSec` của native. Hai bên dùng database manager khác nhau:
+đóng database trước khi mở cùng IDB bằng bên còn lại.
+
+Với config root của checkout này, tính tương đối từ thư mục home:
+
+```bash
+PI_CONFIG_DIR=opswat/Projects/harness2 omp --profile re config path
+PI_CONFIG_DIR=opswat/Projects/harness2 omp --profile re read /usr/bin/true
+```
+
+Lệnh đầu phải ra `profiles/re/agent` của checkout này, không phải profile
+mặc định. Trong phiên RE mới, kiểm tra native bằng `ida` open/exec/close trên
+fixture vô hại; với MCP dùng `/mcp reload`, `/mcp test ida`, rồi tool đọc
+`list_databases` và `reference`. Kiểm tra phân tích bằng MCP `open_database`
+với `gui: false`, đọc metadata/functions qua `execute_python`, rồi
+`close_database` đúng instance vừa mở. Không chạy binary được phân tích.
+Smoke MCP gọi executable trực tiếp đã chạy ngoài repo, bỏ các biến IDA khỏi
+shell khởi chạy: discovery profile, initialize, cả sáu tool, `list_databases`
+và `reference` đều thành công. Fixture tạm được biên dịch cho kết quả ARM/64-bit,
+`twice`/`main`; database đóng thành công với `final_lease: true`.
+Cấu hình native được giữ nguyên.
+
 ## Lưu ý
 
 - Giữ `HARNESS2_OMP_PROFILE` ở một profile chuyên dụng. Overlay không ngăn MCP

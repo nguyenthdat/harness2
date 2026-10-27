@@ -1,6 +1,17 @@
 {
   "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
   "mcpServers": {
+    "ida": {
+      "type": "stdio",
+      "command": "ida-mcp",
+      "args": ["stdio", "--agent=omp-re", "--idle-timeout=900"],
+      "env": {
+        "IDADIR": "IDADIR",
+        "IDAPYTHON_VENV_EXECUTABLE": "OMP_IDA_PYTHON",
+        "IDA_NEXUS_IDALIB_ONLY": "1"
+      },
+      "timeout": 120000
+    },
     "rea": {
       "type": "stdio",
       "command": "bunx",

@@ -263,6 +263,103 @@ What to move:
   `.omp/` at the root, with each `sub_agents/<name>/AGENT.md` moved to
   `.omp/agents/<name>.md`.
 
+## 8. Native IDA and the official IDA MCP in the RE profile
+
+`profiles/re/agent/config.yml` enables OMP's native `ida` tool and executable
+`read` views. `profiles/re/agent/mcp.json` also connects the
+[first-party Hex-Rays IDA MCP](https://docs.hex-rays.com/add-ons/mcp/overview)
+from [HexRaysSA/ida-mcp](https://github.com/HexRaysSA/ida-mcp), not the community
+`ida-pro-mcp` server. The existing REA/Ghidra server remains unchanged.
+
+Native IDA keeps the requested `~/opswat/.idapro/.venv/bin/python`; MCP
+launches the `ida-mcp` executable installed separately by `uv tool install`.
+The tested stack is OMP 18.13.1, IDA Pro 9.4.260713, Python 3.13.16 arm64,
+`ida-domain` 0.5.1, and official `ida-mcp` 20261023.0.2. The MCP requires IDA
+9.4+ with idalib, Python 3.11+, Git, and uv. A working IDA license and any
+required first-run license acceptance are prerequisites; these commands do
+not install a license, accept terms, or start the GUI.
+
+Keep the following **literal absolute paths** in the private, ignored
+`profiles/re/agent/.env`, adjusting them for the machine:
+
+```dotenv
+OMP_IDA_PYTHON=/absolute/home/opswat/.idapro/.venv/bin/python
+IDADIR="/path/to/IDA Professional 9.4.app/Contents/MacOS"
+IDAPYTHON_VENV_EXECUTABLE=/absolute/home/opswat/.idapro/.venv/bin/python
+```
+
+On Linux, `IDADIR` is the directory containing `libidalib.so`; on macOS it is
+the app's `Contents/MacOS`, containing `libidalib.dylib`. Do not use the old
+`IDA_INSTALLDIR` name. Do not put `$HOME` or references to another variable
+inside the profile dotenv file: OMP's parser leaves those references literal.
+Keep IDA-specific variables in this profile, not a globally exported shell
+startup file.
+
+Keep the existing native venv; install the MCP CLI separately and ensure
+`ida-mcp` is on OMP's `PATH`. These are the tested versions:
+
+```bash
+export OMP_IDA_PYTHON="$HOME/opswat/.idapro/.venv/bin/python"
+uv pip install --python "$OMP_IDA_PYTHON" ida-domain==0.5.1 idapro==0.0.10
+uv tool install ida-mcp==20261023.0.2
+```
+
+`idapyswitch` selects the **base interpreter's shared library**, not the venv
+directory or `bin/python`. For the selected venv, with `IDADIR` exported in
+the current setup shell:
+
+```bash
+LIBPYTHON=$("$OMP_IDA_PYTHON" -c 'import pathlib, sysconfig; print(pathlib.Path(sysconfig.get_config_var("LIBDIR")) / sysconfig.get_config_var("LDLIBRARY"))')
+"$IDADIR/idapyswitch" --force-path "$LIBPYTHON"
+export IDAPYTHON_VENV_EXECUTABLE="$OMP_IDA_PYTHON"
+# Read the selection back without switching again:
+"$OMP_IDA_PYTHON" -c 'import idapro, ida_registry; print(ida_registry.reg_read_string("Python3TargetDLL"))'
+```
+
+The library and venv must have the same Python major/minor and CPU
+architecture. `IDAPYTHON_VENV_EXECUTABLE` activates the venv's packages for
+IDAPython; `idapyswitch` alone does not. Finder/Dock launches do not inherit
+these shell/profile variables; no machine-wide `launchctl` setting or GUI
+plugin is installed by this setup.
+
+OMP 18.13.1 does **not** interpolate `${VAR}` in native `ida.python` or
+`ida.installDir`. The native interpreter setting therefore uses the supported
+`~` path; update it as well if moving the venv. `installDir` is intentionally
+unset so native IDA reads `IDADIR`. MCP `${VAR}` expansion only sees Bun's
+process environment, which can miss profile dotenv values outside this repo.
+The IDA MCP entry uses OMP's documented bare-variable `env` lookup and runs
+`ida-mcp stdio --agent=omp-re --idle-timeout=900` directly, without a shell or
+Python module shim. `IDAPYTHON_VENV_EXECUTABLE` still resolves the profile's
+`OMP_IDA_PYTHON` value; no separate MCP `OMP_IDA_PYTHON` mapping is needed.
+
+The MCP uses stdio, not an unauthenticated HTTP listener.
+`IDA_NEXUS_IDALIB_ONLY=1` keeps workers headless. The CLI is launched from uv's
+tool environment; with the retained `IDAPYTHON_VENV_EXECUTABLE`, the tested
+worker reports the native venv as `sys.executable`/`sys.prefix`, while
+`idapro` and `ida_nexus` are loaded from uv's tool environment.
+`--idle-timeout=900` releases idle MCP database leases independently of native
+`ida.idleCloseSec`. Native IDA and IDA Nexus have separate database managers:
+close a database before opening that same IDB with the other integration.
+
+For this checkout's home-relative config root:
+
+```bash
+PI_CONFIG_DIR=opswat/Projects/harness2 omp --profile re config path
+PI_CONFIG_DIR=opswat/Projects/harness2 omp --profile re read /usr/bin/true
+```
+
+The first command must resolve to this checkout's `profiles/re/agent`, not the
+default profile. In a new RE session, use native `ida` open/exec/close on a
+harmless fixture, or `/mcp reload` then `/mcp test ida`; MCP `list_databases`
+and `reference` are harmless read checks. For an analysis smoke, MCP
+`open_database` with `gui: false`, inspect metadata/functions with
+`execute_python`, then `close_database` for only the returned instance.
+Do not execute the analyzed binary. The direct-executable MCP smoke ran outside
+the repo with IDA variables unset in the launching shell: profile discovery,
+initialize, all six tools, `list_databases`, and `reference` passed. A temporary
+compiled fixture reported ARM/64-bit and `twice`/`main`; its database closed
+successfully with `final_lease: true`. Native configuration was unchanged.
+
 ## Caveats
 
 - Keep `HARNESS2_OMP_PROFILE` on a dedicated profile. The overlay does not stop

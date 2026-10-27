@@ -66,8 +66,9 @@ theme:
   light: light
 ida:
   enabled: true
-  python: ${OMP_IDA_PYTHON}
-  installDir: ${IDA_INSTALLDIR}
+  # Native settings do not expand ${VAR}; ~ is supported for this interpreter path.
+  python: ~/opswat/.idapro/.venv/bin/python
+  # Leave installDir unset: OMP reads IDADIR, then its normal IDA discovery paths.
   maxOpen: 4
   idleCloseSec: 900
   # remoteDebug:
