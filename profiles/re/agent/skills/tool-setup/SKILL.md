@@ -1,14 +1,13 @@
 ---
 name: tool-setup
-description: >-
   Detect the host and, only when the parent asks, install an allowlisted
   reverse-engineering tool set with that OS package manager. Linux prefers
   KVM, macOS prefers Parallels, and Windows prefers VMware. Android covers
-  the emulator, a su check, avdmanager/sdkmanager, and a local KernelSU Image
-  that replaces an emulator kernel-ranchu on Google Play images. Provides
-  setup_android_emulator.py for automated AVD creation, patching, cold boot,
-  and root verification. iOS tooling is macOS only. Does not install IDA,
-  download unauthorized kernels, or write a kernel on a physical device.
+  the emulator, a su check, avdmanager/sdkmanager, and automated KernelSU
+  patching that replaces an emulator kernel-ranchu on Google Play images.
+  Provides setup_android_emulator.py for automated download, AVD creation,
+  patching, cold boot, and root verification. iOS tooling is macOS only.
+  Does not install IDA or write a kernel on a physical device.
 ---
 
 # Tool setup
@@ -45,10 +44,10 @@ Read the single JSON object on stdout.
 - `android.setup_script` reports the path to `setup_android_emulator.py`.
 - `ios.supported` is true only on macOS. Elsewhere `ios.reason` is
   `iOS tooling runs on macOS only`.
-- `kernelsu.status` is `manual` when
-  `/Users/datnguyen/Projects/android-emu-ksu/download/Image` is absent.
-  `kernelsu.path` is that path.
-
+- `kernelsu.status` is `available`.
+- `kernelsu.auto_download` is `true`.
+- `kernelsu.cache_dir` reports the active cache directory (`~/.cache/android-ksu` or
+  `ANDROID_KSU_CACHE_DIR`).
 A missing tool is not permission to fetch a random installer.
 
 ## 2. Install
@@ -98,7 +97,7 @@ AOSP / Google APIs images.
 - Host: Apple Silicon macOS (M1/M2/M3/M4, `arm64-v8a`) or Linux/Windows equivalent.
 - Android SDK: Command-line tools (`avdmanager`, `sdkmanager`), platform tools (`adb`), emulator.
 - System Image: `system-images;android-36;google_apis_playstore;arm64-v8a` (or `android-37.0`).
-- KernelSU Assets: Prebuilt GKI kernel `Image` (or AnyKernel3 zip e.g., `6.6.66-android15-*.zip`, `6.12.58-android16-*.zip`) and `KernelSU_Next_*.apk` located in `/Users/datnguyen/Projects/android-emu-ksu/download/`.
+- KernelSU Assets: GKI kernel `Image` (or AnyKernel3 zip e.g., `6.6.66-android15-*.zip`, `6.12.58-android16-*.zip`) and `KernelSU_Next_*.apk` automatically downloaded from official GitHub releases to `~/.cache/android-ksu/` (or fallback to legacy `/Users/datnguyen/Projects/android-emu-ksu/download/` if present).
 
 ### Manual Step-by-Step Procedure
 
@@ -109,9 +108,9 @@ AOSP / Google APIs images.
    ```
 
 2. **Obtain KernelSU GKI Kernel (`Image`)**:
-   Download prebuilt AnyKernel3 zip (Bypass version from WildKernels/GKI_KernelSU_SUSFS) or use local assets in `/Users/datnguyen/Projects/android-emu-ksu/download/`. Extract `Image`:
+   Kernel zips are automatically fetched by `setup_android_emulator.py` into `~/.cache/android-ksu/`. If extracted manually from AnyKernel3 zip:
    ```bash
-   unzip -p /Users/datnguyen/Projects/android-emu-ksu/download/6.6.66-android15-*.zip Image > /tmp/Image
+   unzip -p ~/.cache/android-ksu/6.6.66-android15-*.zip Image > /tmp/Image
    ```
 
 3. **Locate and Replace `kernel-ranchu`**:
@@ -136,7 +135,7 @@ AOSP / Google APIs images.
 
 6. **Install KernelSU Manager APK**:
    ```bash
-   adb install -r /Users/datnguyen/Projects/android-emu-ksu/download/KernelSU_Next_*.apk
+   adb install -r ~/.cache/android-ksu/KernelSU_Next_*.apk
    ```
 
 7. **Verify Root Access**:
@@ -153,15 +152,15 @@ The companion automated script implements the full workflow cleanly:
 `uv run profiles/re/agent/skills/tool-setup/scripts/setup_android_emulator.py <subcommand>`
 
 Supported subcommands:
-- `list`: Inspects SDK path, tools, installed system images, AVDs, and KernelSU assets in `/Users/datnguyen/Projects/android-emu-ksu/download/`.
+- `list`: Inspects SDK path, tools, installed system images, AVDs, and KernelSU assets in cache directory (`~/.cache/android-ksu/`).
+- `download [--kernel-version <ver>] [--apk-only] [--kernel-only]`: Automatically downloads the matching KernelSU GKI kernel AnyKernel3 zip from WildKernels and Manager APK from KernelSU-Next GitHub releases.
 - `create-avd [--name <name>] [--system-image <pkg>] [--device <device>]`: Creates AVD with `avdmanager`.
-- `patch-kernel [--system-image-path <path>] [--kernel-source <image_or_zip>]`: Backs up `kernel-ranchu` to `.orig` and replaces it with KernelSU GKI `Image` (extracting from AnyKernel3 zip if needed).
+- `patch-kernel [--system-image-path <path>] [--kernel-source <image_or_zip>]`: Backs up `kernel-ranchu` to `.orig` and replaces it with KernelSU GKI `Image` (auto-downloading matching kernel zip from GitHub releases if missing, extracting `Image`).
 - `cold-boot [--avd <name>] [--headless]`: Starts emulator with `-no-snapshot-load` (and optional `-no-window -no-audio`).
 - `wait-boot [--serial <serial>] [--timeout <sec>]`: Waits for `sys.boot_completed == 1`.
-- `install-apk [--apk <path>] [--serial <serial>]`: Installs `KernelSU_Next_*.apk` via `adb install -r`.
+- `install-apk [--apk <path>] [--serial <serial>]`: Installs `KernelSU_Next_*.apk` via `adb install -r` (auto-downloading Manager APK from GitHub releases if missing).
 - `verify-root [--serial <serial>]`: Runs `adb shell su -c id` and confirms `uid=0`.
-- `setup-all [--avd <name>] [--headless] [--timeout <sec>]`: Executes end-to-end patch, boot, install, and verification.
-
+- `setup-all [--avd <name>] [--headless] [--timeout <sec>]`: Executes end-to-end download/patch, boot, install, and verification.
 All subcommands support `--json` for structured automation.
 
 ## 5. Never

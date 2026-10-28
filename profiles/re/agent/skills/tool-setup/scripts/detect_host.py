@@ -9,9 +9,8 @@
 Stdout is one JSON object. A bare run never installs. Package-manager
 commands exist only as argument lists in this file. KernelSU replacement
 copies a local Image onto an emulator kernel-ranchu after writing
-kernel-ranchu.orig; it does not download a kernel or touch a physical device.
+kernel-ranchu.orig; writing to a physical device is forbidden.
 """
-
 from __future__ import annotations
 
 import json
@@ -30,8 +29,8 @@ COLD_BOOT = (
     "A cold boot is required before adb shell su -c id. "
     "This skill does not boot the emulator."
 )
-KERNELSU_DOWNLOAD = Path("/Users/datnguyen/Projects/android-emu-ksu/download")
-KERNELSU_IMAGE = KERNELSU_DOWNLOAD / "Image"
+DEFAULT_CACHE_DIR = Path.home() / ".cache" / "android-ksu"
+LEGACY_DOWNLOAD_DIR = Path("/Users/datnguyen/Projects/android-emu-ksu/download")
 MANAGERS: tuple[str, ...] = ("brew", "apt-get", "dnf", "pacman", "winget")
 ROOT_MANAGERS: frozenset[str] = frozenset({"apt-get", "dnf", "pacman"})
 STATIC_ORDER: tuple[str, ...] = (
@@ -148,14 +147,15 @@ class IosUnsupported(TypedDict):
 
 class KernelsuInfo(TypedDict):
     status: str
-    path: str
+    auto_download: bool
+    cache_dir: str
     system_image_roots: list[str]
     kernel_ranchu: list[str]
+    path: NotRequired[str]
     replaced: NotRequired[list[str]]
     backups: NotRequired[list[str]]
     cold_boot: NotRequired[str]
     error: NotRequired[str]
-
 
 class InstalledItem(TypedDict):
     name: str
@@ -463,16 +463,37 @@ def find_kernel_ranchu(roots: list[Path]) -> list[Path]:
     return found
 
 
+def get_cache_dir() -> Path:
+    env_dir = os.environ.get("ANDROID_KSU_CACHE_DIR")
+    if env_dir:
+        return Path(env_dir).expanduser().resolve()
+    if LEGACY_DOWNLOAD_DIR.is_dir():
+        has_files = any(
+            item.is_file()
+            and (
+                item.name == "Image"
+                or item.name.endswith(".zip")
+                or item.name.endswith(".apk")
+            )
+            for item in LEGACY_DOWNLOAD_DIR.iterdir()
+        )
+        if has_files:
+            return LEGACY_DOWNLOAD_DIR
+    return DEFAULT_CACHE_DIR
+
+
 def local_kernelsu_image() -> Path | None:
+    cache_dir = get_cache_dir()
+    image_path = cache_dir / "Image"
     try:
-        info = KERNELSU_IMAGE.lstat()
+        info = image_path.lstat()
     except OSError:
         return None
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
         return None
     try:
-        resolved = KERNELSU_IMAGE.resolve(strict=True)
-        download = KERNELSU_DOWNLOAD.resolve(strict=True)
+        resolved = image_path.resolve(strict=True)
+        download = cache_dir.resolve(strict=True)
     except OSError:
         return None
     if resolved.parent != download or resolved.name != "Image":
@@ -488,14 +509,14 @@ def local_kernelsu_image() -> Path | None:
 def kernelsu_report() -> KernelsuInfo:
     roots = system_image_roots()
     kernels = find_kernel_ranchu(roots)
-    status = "local" if local_kernelsu_image() is not None else "manual"
+    cache_dir = get_cache_dir()
     return {
-        "status": status,
-        "path": str(KERNELSU_IMAGE),
+        "status": "available",
+        "auto_download": True,
+        "cache_dir": str(cache_dir),
         "system_image_roots": [str(root) for root in roots],
         "kernel_ranchu": [str(kernel) for kernel in kernels],
     }
-
 
 def detect(probe_android: bool) -> Report:
     os_name = detect_os()

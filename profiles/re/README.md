@@ -174,12 +174,12 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
   - `emulator`: Trình giả lập Android Studio chính thức chạy phần cứng tăng tốc (HAXM / Hypervisor.Framework / KVM).
   - `cmdline-tools` (`avdmanager`, `sdkmanager`): Quản lý tạo/xóa AVD, tải và cập nhật system image.
   - **Google Play arm64-v8a System Images**: Image sản xuất thực tế có Play Store (API 34, 35, 36, 37.0).
-  - **KernelSU GKI Kernel Replacement**: Thay thế `kernel-ranchu` bằng nhân GKI Linux hỗ trợ KernelSU (`Image` từ prebuilt AnyKernel3 zip: `6.6.66-android15-*`, `6.12.58-android16-*`).
-  - **KernelSU Manager APK**: Ứng dụng quản trị quyền root mức nhân (`KernelSU_Next_*.apk`).
-  - **Tài liệu tham chiếu chi tiết**:
+  - **KernelSU GKI Kernel Replacement**: Thay thế `kernel-ranchu` bằng nhân GKI Linux hỗ trợ KernelSU (`Image` từ AnyKernel3 zip: `6.6.66-android15-*`, `6.12.58-android16-*` được tải tự động từ official GitHub releases).
+  - **KernelSU Manager APK**: Ứng dụng quản trị quyền root mức nhân (`KernelSU_Next_*.apk` tải tự động từ GitHub releases).
+  - **Tài liệu tham chiếu & Kịch bản tự động**:
     - Hướng dẫn cấu hình: `/Users/datnguyen/Projects/android-emu-ksu/rooting-android-studio-emulator-with-kernelsu-apple-silicon-m1-m2-m3-m4-enable-root-on-google-play-images.md`
-    - Kho tài nguyên prebuilt: `/Users/datnguyen/Projects/android-emu-ksu/download/`
-    - Kịch bản tự động hóa: `profiles/re/agent/skills/tool-setup/scripts/setup_android_emulator.py`
+    - Cache tài nguyên KernelSU: `~/.cache/android-ksu/` (hoặc `ANDROID_KSU_CACHE_DIR`, tự động tải từ GitHub releases khi thiếu)
+    - Kịch bản tự động hóa: `profiles/re/agent/skills/tool-setup/scripts/setup_android_emulator.py` (hỗ trợ `download`, `create-avd`, `patch-kernel`, `cold-boot`, `wait-boot`, `install-apk`, `verify-root`, `setup-all`)
 
 - **iOS Lab (macOS only)**:
   - Xcode Command Line Tools (`xcrun`, `lldb`).

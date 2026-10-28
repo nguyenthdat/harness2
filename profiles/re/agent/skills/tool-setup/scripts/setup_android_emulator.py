@@ -9,7 +9,9 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
+import lzma
 import os
 import platform
 import re
@@ -17,14 +19,38 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
-DEFAULT_DOWNLOAD_DIR = Path("/Users/datnguyen/Projects/android-emu-ksu/download")
+DEFAULT_CACHE_DIR = Path.home() / ".cache" / "android-ksu"
+LEGACY_DOWNLOAD_DIR = Path("/Users/datnguyen/Projects/android-emu-ksu/download")
 DEFAULT_AVD_NAME = "Pixel_10_KernelSU_Next"
 DEFAULT_DEVICE = "pixel_7"
+GITHUB_USER_AGENT = "android-ksu-setup/1.0"
 
+
+def get_default_download_dir() -> Path:
+    env_dir = os.environ.get("ANDROID_KSU_CACHE_DIR")
+    if env_dir:
+        p = Path(env_dir).expanduser().resolve()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    if LEGACY_DOWNLOAD_DIR.is_dir():
+        has_files = any(
+            item.is_file()
+            and (
+                item.name == "Image"
+                or item.name.endswith(".zip")
+                or item.name.endswith(".apk")
+            )
+            for item in LEGACY_DOWNLOAD_DIR.iterdir()
+        )
+        if has_files:
+            return LEGACY_DOWNLOAD_DIR
+    DEFAULT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return DEFAULT_CACHE_DIR
 
 class AssetInfo(TypedDict):
     name: str
@@ -245,8 +271,146 @@ def get_default_system_image_path(sdk_root: Path | None) -> Path | None:
     return Path(candidates[0]["path"])
 
 
+def detect_target_kernel_version(target_dir: Path) -> str | None:
+    dest = target_dir / "kernel-ranchu"
+    if not dest.is_file():
+        dest = target_dir / "kernel-ranchu.orig"
+    if not dest.is_file():
+        return None
+    try:
+        with open(dest, "rb") as f:
+            header = f.read(4)
+        data: bytes | None = None
+        if header.startswith(b"\x1f\x8b"):
+            with gzip.open(dest, "rb") as gz:
+                data = gz.read(25_000_000)
+        elif header.startswith(b"\xfd7zXZ"):
+            with lzma.open(dest, "rb") as xz:
+                data = xz.read(25_000_000)
+        else:
+            with open(dest, "rb") as f:
+                data = f.read(25_000_000)
+        if data:
+            m = re.search(
+                rb"Linux version ([0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-android[0-9]+)?)",
+                data,
+            )
+            if m:
+                return m.group(1).decode("ascii", errors="ignore")
+    except Exception:
+        pass
+    return None
+
+
+def download_file(url: str, dest_path: Path) -> Path:
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = dest_path.with_name(f"{dest_path.name}.tmp-{int(time.time())}")
+    req = urllib.request.Request(url, headers={"User-Agent": GITHUB_USER_AGENT})
+    with urllib.request.urlopen(req, timeout=300.0) as resp, open(tmp_path, "wb") as out:
+        shutil.copyfileobj(resp, out)
+    os.replace(tmp_path, dest_path)
+    return dest_path
+
+
+def download_kernelsu_apk(dest_dir: Path) -> Path:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    api_endpoints = [
+        "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/releases/latest",
+        "https://api.github.com/repos/tiann/KernelSU/releases/latest",
+    ]
+    last_err: Exception | None = None
+    for api_url in api_endpoints:
+        try:
+            req = urllib.request.Request(api_url, headers={"User-Agent": GITHUB_USER_AGENT})
+            with urllib.request.urlopen(req, timeout=30.0) as resp:
+                rel_data = json.loads(resp.read().decode())
+            apk_assets = [
+                a
+                for a in rel_data.get("assets", [])
+                if isinstance(a.get("name"), str) and a["name"].endswith(".apk")
+            ]
+            if not apk_assets:
+                continue
+            apk_assets.sort(
+                key=lambda a: (
+                    0 if "spoofed" not in a["name"].lower() and "release" in a["name"].lower() else 1,
+                    0 if "release" in a["name"].lower() else 1,
+                    a["name"],
+                )
+            )
+            chosen = apk_assets[0]
+            asset_name = chosen["name"]
+            dl_url = chosen["browser_download_url"]
+            target_path = dest_dir / asset_name
+            if target_path.is_file() and target_path.stat().st_size > 0:
+                return target_path
+            return download_file(dl_url, target_path)
+        except Exception as exc:
+            last_err = exc
+            continue
+    raise RuntimeError(f"Failed to download KernelSU Manager APK: {last_err}")
+
+
+def download_kernel_zip(kernel_version: str, dest_dir: Path) -> Path:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    api_url = "https://api.github.com/repos/WildKernels/GKI_KernelSU_SUSFS/releases"
+    req = urllib.request.Request(api_url, headers={"User-Agent": GITHUB_USER_AGENT})
+    with urllib.request.urlopen(req, timeout=45.0) as resp:
+        releases = json.loads(resp.read().decode())
+
+    t = kernel_version.strip().lower()
+    m_target = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?(?:-([a-z0-9]+))?", t)
+    t_major = m_target.group(1) if m_target else None
+    t_minor = m_target.group(2) if m_target else None
+    t_android = m_target.group(4) if m_target else None
+
+    candidates: list[tuple[int, int, int, str, str]] = []
+    for r in releases:
+        for a in r.get("assets", []):
+            name = a.get("name", "")
+            if not isinstance(name, str) or not name.endswith(".zip"):
+                continue
+            name_l = name.lower()
+            dl_url = a.get("browser_download_url")
+            if not dl_url:
+                continue
+
+            prio = 10 if "kernelsu-next" in name_l else (20 if "kernelsu" in name_l else 30)
+            if t in name_l:
+                candidates.append((1, prio, 0, name, dl_url))
+                continue
+
+            m_a = re.match(r"^(\d+)\.(\d+)\.(\d+)-([a-z0-9]+)", name_l)
+            if m_a and t_major and t_minor:
+                a_maj, a_min, a_pat, a_and = (
+                    m_a.group(1),
+                    m_a.group(2),
+                    int(m_a.group(3)),
+                    m_a.group(4),
+                )
+                if a_maj == t_major and a_min == t_minor:
+                    and_match = (t_android == a_and) if t_android else True
+                    tier = 2 if and_match else 3
+                    candidates.append((tier, prio, -a_pat, name, dl_url))
+
+    if not candidates:
+        raise RuntimeError(
+            f"No matching AnyKernel3 zip found for kernel version '{kernel_version}' in WildKernels releases"
+        )
+
+    candidates.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+    chosen_name = candidates[0][3]
+    chosen_url = candidates[0][4]
+    target_path = dest_dir / chosen_name
+    if target_path.is_file() and target_path.stat().st_size > 0:
+        return target_path
+    return download_file(chosen_url, target_path)
+
+
 def resolve_kernel_source(
-    download_dir: Path, explicit_source: Path | None = None
+    download_dir: Path,
+    explicit_source: Path | None = None,
+    target_dir: Path | None = None,
 ) -> tuple[Path, Path | None]:
     """Return (source_kernel_image_path, temp_dir_to_clean)."""
     if explicit_source:
@@ -254,7 +418,6 @@ def resolve_kernel_source(
         if p.is_file() and p.name == "Image":
             return p, None
         if p.is_file() and p.suffix == ".zip":
-            # Extract Image from zip
             tmp_extract = Path("/tmp") / f"ksu_extract_{int(time.time())}"
             tmp_extract.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(p, "r") as zf:
@@ -266,32 +429,42 @@ def resolve_kernel_source(
     if direct_image.is_file() and direct_image.stat().st_size > 0:
         return direct_image, None
 
-    # Check AnyKernel3 zip files
-    zip_files = sorted(
-        [
-            f
-            for f in download_dir.glob("*.zip")
-            if "KernelSU" in f.name or "Bypass" in f.name
-        ],
-        reverse=True,
-    )
-    for zpath in zip_files:
-        try:
-            with zipfile.ZipFile(zpath, "r") as zf:
-                if "Image" in zf.namelist():
-                    tmp_extract = (
-                        Path("/tmp") / f"ksu_extract_{zpath.stem}_{int(time.time())}"
-                    )
-                    tmp_extract.mkdir(parents=True, exist_ok=True)
-                    zf.extract("Image", path=tmp_extract)
-                    return tmp_extract / "Image", tmp_extract
-        except Exception:
-            continue
+    # Check AnyKernel3 zip files in download dir
+    if download_dir.is_dir():
+        zip_files = sorted(
+            [
+                f
+                for f in download_dir.glob("*.zip")
+                if "KernelSU" in f.name or "Bypass" in f.name
+            ],
+            reverse=True,
+        )
+        for zpath in zip_files:
+            try:
+                with zipfile.ZipFile(zpath, "r") as zf:
+                    if "Image" in zf.namelist():
+                        tmp_extract = (
+                            Path("/tmp") / f"ksu_extract_{zpath.stem}_{int(time.time())}"
+                        )
+                        tmp_extract.mkdir(parents=True, exist_ok=True)
+                        zf.extract("Image", path=tmp_extract)
+                        return tmp_extract / "Image", tmp_extract
+            except Exception:
+                continue
 
-    raise FileNotFoundError(
-        f"No KernelSU GKI Image or AnyKernel3 zip with Image found in {download_dir}"
-    )
+    # If neither direct Image nor zip is found, attempt auto-download matching kernel
+    kernel_ver: str | None = None
+    if target_dir:
+        kernel_ver = detect_target_kernel_version(target_dir)
+    if not kernel_ver:
+        kernel_ver = "6.6.66-android15"
 
+    zip_path = download_kernel_zip(kernel_ver, download_dir)
+    tmp_extract = Path("/tmp") / f"ksu_extract_{zip_path.stem}_{int(time.time())}"
+    tmp_extract.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extract("Image", path=tmp_extract)
+    return tmp_extract / "Image", tmp_extract
 
 def patch_kernel(
     target_dir: Path, download_dir: Path, explicit_source: Path | None = None
@@ -309,7 +482,9 @@ def patch_kernel(
     backup = target_dir / "kernel-ranchu.orig"
     tmp_clean: Path | None = None
     try:
-        src_image, tmp_clean = resolve_kernel_source(download_dir, explicit_source)
+        src_image, tmp_clean = resolve_kernel_source(
+            download_dir, explicit_source, target_dir
+        )
         if not backup.exists():
             shutil.copy2(dest, backup)
 
@@ -459,7 +634,6 @@ def wait_boot(
 def find_kernelsu_apk(download_dir: Path) -> Path | None:
     if not download_dir.is_dir():
         return None
-    # Sort by version or name descending
     apks = sorted(
         [
             f
@@ -469,6 +643,13 @@ def find_kernelsu_apk(download_dir: Path) -> Path | None:
         reverse=True,
     )
     return apks[0] if apks else None
+
+
+def ensure_kernelsu_apk(download_dir: Path) -> Path:
+    apk = find_kernelsu_apk(download_dir)
+    if apk and apk.is_file():
+        return apk
+    return download_kernelsu_apk(download_dir)
 
 
 def install_apk(
@@ -538,8 +719,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--download-dir",
         type=Path,
-        default=DEFAULT_DOWNLOAD_DIR,
-        help="Directory containing KernelSU images, AnyKernel3 zips, and APKs",
+        default=get_default_download_dir(),
+        help="Directory containing KernelSU images, AnyKernel3 zips, and APKs (auto-cached)",
     )
     parser.add_argument(
         "--json",
@@ -552,6 +733,20 @@ def build_parser() -> argparse.ArgumentParser:
     # list
     subparsers.add_parser("list", help="List SDK, system images, AVDs, and KernelSU assets")
 
+    # download
+    p_download = subparsers.add_parser(
+        "download", help="Download matching KernelSU GKI kernel zip and Manager APK"
+    )
+    p_download.add_argument(
+        "--kernel-version",
+        help="Target kernel version (e.g. 6.6.66-android15 or 6.12.58-android16)",
+    )
+    p_download.add_argument(
+        "--apk-only", action="store_true", help="Download only KernelSU Manager APK"
+    )
+    p_download.add_argument(
+        "--kernel-only", action="store_true", help="Download only KernelSU GKI kernel zip"
+    )
     # create-avd
     p_create = subparsers.add_parser("create-avd", help="Create a new AVD")
     p_create.add_argument("--name", default=DEFAULT_AVD_NAME, help="AVD name")
@@ -672,6 +867,34 @@ def main(argv: list[str] | None = None) -> int:
         emit_output(report, args.json)
         return 0
 
+    if sub == "download":
+        dl_apk = not args.kernel_only
+        dl_kernel = not args.apk_only
+        results: dict[str, Any] = {"download_dir": str(download_dir)}
+        if dl_apk:
+            try:
+                apk_path = download_kernelsu_apk(download_dir)
+                results["apk"] = str(apk_path)
+            except Exception as exc:
+                results["apk_error"] = str(exc)
+        if dl_kernel:
+            k_ver = args.kernel_version
+            if not k_ver:
+                def_target = get_default_system_image_path(sdk_root)
+                if def_target:
+                    k_ver = detect_target_kernel_version(def_target)
+            if not k_ver:
+                k_ver = "6.6.66-android15"
+            results["kernel_version_requested"] = k_ver
+            try:
+                k_path = download_kernel_zip(k_ver, download_dir)
+                results["kernel_zip"] = str(k_path)
+            except Exception as exc:
+                results["kernel_error"] = str(exc)
+        has_err = "apk_error" in results or "kernel_error" in results
+        emit_output(results, args.json)
+        return 1 if has_err else 0
+
     if sub == "create-avd":
         if not avdmanager_bin:
             emit_output({"error": "avdmanager executable not found"}, args.json)
@@ -763,16 +986,16 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         apk = args.apk
         if not apk:
-            apk = find_kernelsu_apk(download_dir)
-        if not apk or not apk.is_file():
-            emit_output(
-                {"error": f"No KernelSU APK found in {download_dir}"}, args.json
-            )
-            return 1
+            try:
+                apk = ensure_kernelsu_apk(download_dir)
+            except Exception as exc:
+                emit_output(
+                    {"error": f"Failed to acquire KernelSU APK: {exc}"}, args.json
+                )
+                return 1
         apk_res = install_apk(adb_bin, apk, serial=args.serial)
         emit_output(apk_res, args.json)
         return 0 if apk_res["success"] else 1
-
     if sub == "verify-root":
         if not adb_bin:
             emit_output({"error": "adb executable not found"}, args.json)
@@ -836,13 +1059,16 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         # 5. Install APK
-        apk = find_kernelsu_apk(download_dir)
-        apk_res = (
-            install_apk(adb_bin, apk, serial=wb_res["serial"])
-            if apk
-            else {"error": "APK not found"}
-        )
-
+        try:
+            apk = ensure_kernelsu_apk(download_dir)
+            apk_res = install_apk(adb_bin, apk, serial=wb_res["serial"])
+        except Exception as exc:
+            apk_res = {
+                "apk": "",
+                "serial": wb_res["serial"],
+                "success": False,
+                "output": str(exc),
+            }
         # 6. Verify root
         vr_res = verify_root(adb_bin, serial=wb_res["serial"])
 
