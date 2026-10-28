@@ -18,6 +18,7 @@ Clone or update dependencies using `bash scripts/clone_dependencies.sh`.
 | Rust-SWE-Bench | `6275b18be51ce3242de9e959a32260dd59909595` | `https://github.com/GhabiX/Rust-SWE-Bench.git` |
 | CRUST-bench | `4b4702544b800a3821feea128c5b9e413665dc83` | `https://github.com/anirudhkhatry/CRUST-bench.git` |
 | AgentRE-Bench | `654c4042bb0022b32b522769d99f76b103f5d504` | `https://github.com/agentrebench/AgentRE-Bench.git` |
+| CyberSOCEval_data | `ce7daa5bc7da51559ca97476d2277be02631783e` | `https://github.com/CrowdStrike/CyberSOCEval_data.git` |
 | BinaryAudit | `175b7ec1a39b7ba1545ae008a9e93106348c3b4e` | `https://github.com/QuesmaOrg/BinaryAudit.git` |
 | autopenbench | `9c4890a7195896a399339f4b1b0e0c498fdd27cb` | `https://github.com/nguyenthdat/auto-pen-bench.git` |
 | bountybench | `8ece6aab0b954f7c85b5705e69f0142eeaf2c5d1` | `https://github.com/nguyenthdat/bountybench.git` |
