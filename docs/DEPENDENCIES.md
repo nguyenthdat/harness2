@@ -50,6 +50,7 @@ bash scripts/clone_dependencies.sh autopenbench
 | `dependencies/Rust-SWE-Bench` | `GhabiX/Rust-SWE-Bench` | `https://github.com/GhabiX/Rust-SWE-Bench.git` | `6275b18be51ce3242de9e959a32260dd59909595` | Rust SWE | Upstream tracking |
 | `dependencies/CRUST-bench` | `anirudhkhatry/CRUST-bench` | `https://github.com/anirudhkhatry/CRUST-bench.git` | `4b4702544b800a3821feea128c5b9e413665dc83` | C-to-Rust transpilation | Upstream tracking |
 | `dependencies/AgentRE-Bench` | `agentrebench/AgentRE-Bench` | `https://github.com/agentrebench/AgentRE-Bench.git` | `654c4042bb0022b32b522769d99f76b103f5d504` | Desktop RE (ELF / PE) | Upstream tracking (23 levels, 33 binaries) |
+| `dependencies/CyberSOCEval_data` | `CrowdStrike/CyberSOCEval_data` | `https://github.com/CrowdStrike/CyberSOCEval_data.git` | `ce7daa5bc7da51559ca97476d2277be02631783e` | Malware report QA | Upstream tracking (609 questions; answers fetched separately) |
 | `dependencies/BinaryAudit` | `QuesmaOrg/BinaryAudit` | `https://github.com/QuesmaOrg/BinaryAudit.git` | `175b7ec1a39b7ba1545ae008a9e93106348c3b4e` | Backdoor detection | Upstream tracking (33 tasks) |
 | `dependencies/autopenbench` | `lucagioacchini/auto-pen-bench` | `https://github.com/nguyenthdat/auto-pen-bench.git` | `9c4890a7195896a399339f4b1b0e0c498fdd27cb` (main) | Webapp pentest | Fork tracking (33 tasks) |
 | `dependencies/bountybench` | `bountybench/bountybench` | `https://github.com/nguyenthdat/bountybench.git` | `8ece6aab0b954f7c85b5705e69f0142eeaf2c5d1` (main) | Webapp pentest | Fork tracking (40 bug bounties) |

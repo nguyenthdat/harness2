@@ -17,8 +17,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import shutil
 import subprocess
+import urllib.request
 
 from harness2 import config, install
 from harness2.cli._common import SUBSTRATES
@@ -101,6 +103,23 @@ def _install_benchmark_specifics(canonical_name: str, repo, dry: bool, substrate
     elif canonical_name == "BinaryAudit":
         # BinaryAudit: discovery only in harness2
         print(f"  [binaudit] Repo cloned (discovery only; full execution requires upstream Harbor with Ghidra/Radare2 container)")
+    elif canonical_name == "CyberSOCEval_data":
+        dest = config.DEPENDENCIES / "cybersoceval" / "questions.json"
+        if not dry:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            current = ""
+            if dest.is_file():
+                current = hashlib.sha256(dest.read_bytes()).hexdigest()
+            if current != config.CYBERSOC_QUESTIONS_SHA256:
+                print("  [cybersoc] Downloading pinned malware-analysis questions.json")
+                urllib.request.urlretrieve(config.CYBERSOC_QUESTIONS_URL, dest)
+                got = hashlib.sha256(dest.read_bytes()).hexdigest()
+                if got != config.CYBERSOC_QUESTIONS_SHA256:
+                    dest.unlink(missing_ok=True)
+                    raise RuntimeError(
+                        f"CyberSOCEval questions.json sha256 {got} != {config.CYBERSOC_QUESTIONS_SHA256}"
+                    )
+        print("  [cybersoc] 608 report questions; OMP only; samples are not executed")
     else:
         print(f"  [{canonical_name}] Repo cloned and environment configured.")
 

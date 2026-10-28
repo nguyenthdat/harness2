@@ -9,6 +9,24 @@ Choose the recursion mode with `--mode parallel` or `--mode sequential` and the
 task-level recursion budget with `--k`. Keep both identical across the run,
 judge, and report commands.
 
+## CyberSOCEval malware analysis
+
+Upstream data: [CrowdStrike/CyberSOCEval_data](https://github.com/CrowdStrike/CyberSOCEval_data).
+Questions: PurpleLlama `CybersecurityBenchmarks/datasets/crwd_meta/malware_analysis/questions.json`
+at `d934ea285d124d81c10f7e15a06a1e1f74eff2c3`.
+
+608 multiple-choice questions over public Hybrid Analysis detonation reports.
+Upstream question 424 has an empty answer key and is omitted.
+The agent reads a condensed report and writes `output/answer.json`. It does not
+receive the answer key and does not execute a sample. Scoring is set-Jaccard on
+the selected letters. Only the OMP substrate is implemented.
+
+```bash
+harness2-setup cybersoc --substrate omp
+harness2-check --bench cybersoc --substrate omp
+harness2 --bench cybersoc --substrate omp --k 1 --mode parallel
+```
+
 ## LAB
 
 Upstream: [harveyai/harvey-labs](https://github.com/harveyai/harvey-labs).

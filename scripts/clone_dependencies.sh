@@ -81,6 +81,7 @@ DEPS=(
     "sec-bench|https://github.com/nguyenthdat/SEC-bench.git|31eb43485a3de47da260be0f978528b1f2314415"
     "sec-bench-pro|https://github.com/nguyenthdat/SEC-bench-Pro.git|da80928ee20dc417ca6a068a1213e1d9d279df20"
     "calif-publications|https://github.com/nguyenthdat/publications.git|0a1c715b06477a32155329bd0c535f30c91bdabf"
+    "CyberSOCEval_data|https://github.com/CrowdStrike/CyberSOCEval_data.git|ce7daa5bc7da51559ca97476d2277be02631783e"
 )
 
 mkdir -p "${DEPENDENCIES_DIR}"

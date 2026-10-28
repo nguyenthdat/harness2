@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -72,6 +73,7 @@ def check(adapter, *, judge=False) -> list[str]:
         "crust": "CRUST-bench",
         "agentre": "AgentRE-Bench",
         "binaudit": "BinaryAudit",
+        "cybersoc": "CyberSOCEval_data",
     }.get(bench, bench)
     repo = config.DEPENDENCIES / name
     for dependency in (name, "opencode"):
@@ -181,6 +183,18 @@ def check(adapter, *, judge=False) -> list[str]:
                     errors.append(f"WorkBuddy {role} configuration is stale; rerun setup")
             except (OSError, ValueError, KeyError, TypeError):
                 errors.append(f"WorkBuddy {role} configuration missing; rerun setup")
+    elif bench == "cybersoc":
+        from .benchmarks.cybersoc import questions_path
+
+        path = questions_path()
+        if not path.is_file():
+            errors.append(f"CyberSOCEval questions missing at {path}; run harness2-setup cybersoc")
+        else:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if digest != config.CYBERSOC_QUESTIONS_SHA256:
+                errors.append("CyberSOCEval questions.json does not match the pinned sha256")
+        if not (repo / "data" / "hybrid-analysis").is_dir():
+            errors.append("CyberSOCEval hybrid-analysis reports missing; rerun harness2-setup cybersoc")
     elif bench == "agentre":
         for tool in ("file", "strings"):
             if not shutil.which(tool):

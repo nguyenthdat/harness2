@@ -61,6 +61,8 @@ BENCHMARK_NAMES: dict[str, str] = {
     "AgentRE-Bench": "AgentRE-Bench",
     "binaudit": "BinaryAudit",
     "BinaryAudit": "BinaryAudit",
+    "cybersoc": "CyberSOCEval_data",
+    "CyberSOCEval_data": "CyberSOCEval_data",
     # Webapp pentest
     "autopenbench": "autopenbench",
     "auto-pen-bench": "autopenbench",

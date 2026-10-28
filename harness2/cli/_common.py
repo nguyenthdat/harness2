@@ -27,7 +27,7 @@ from ..core import library as LIB
 from ..core import schedule as SCHED
 from ..core.spec import BenchmarkAdapter
 
-BENCHES = ("jb", "wb", "lab", "cve", "cyber", "rswe", "crust", "agentre", "binaudit")
+BENCHES = ("jb", "wb", "lab", "cve", "cyber", "rswe", "crust", "agentre", "binaudit", "cybersoc")
 WB_SUBSETS = ("office", "web", "code", "sec")
 SUBSTRATES = ("oc", "cx", "omp")
 
@@ -90,6 +90,10 @@ def make_adapter(
         from ..benchmarks.binaudit import BinaryAuditAdapter
 
         return BinaryAuditAdapter(substrate=substrate, split_file=split_file)
+    if bench == "cybersoc":
+        from ..benchmarks.cybersoc import CyberSOCAdapter
+
+        return CyberSOCAdapter(substrate=substrate, split_file=split_file)
     raise ValueError(f"Unhandled bench {bench!r}")
 
 

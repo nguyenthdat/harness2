@@ -147,6 +147,7 @@ DEPENDENCY_PINS = {
     "sec-bench": "31eb43485a3de47da260be0f978528b1f2314415",
     "sec-bench-pro": "da80928ee20dc417ca6a068a1213e1d9d279df20",
     "calif-publications": "0a1c715b06477a32155329bd0c535f30c91bdabf",
+    "CyberSOCEval_data": "ce7daa5bc7da51559ca97476d2277be02631783e",
 }
 DEPENDENCY_ORIGINS = {
     "job-bench-eval": "https://github.com/Job-Bench/job-bench-eval.git",
@@ -180,7 +181,16 @@ DEPENDENCY_ORIGINS = {
     "sec-bench": "https://github.com/nguyenthdat/SEC-bench.git",
     "sec-bench-pro": "https://github.com/nguyenthdat/SEC-bench-Pro.git",
     "calif-publications": "https://github.com/nguyenthdat/publications.git",
+    "CyberSOCEval_data": "https://github.com/CrowdStrike/CyberSOCEval_data.git",
 }
+
+# PurpleLlama d934ea285d124d81c10f7e15a06a1e1f74eff2c3 malware_analysis/questions.json
+CYBERSOC_QUESTIONS_SHA256 = "f20f2a2b25f60937edbfe00c15b58a9d8e1d180ace5ef12158b0c39446bcd371"
+CYBERSOC_QUESTIONS_URL = (
+    "https://raw.githubusercontent.com/meta-llama/PurpleLlama/"
+    "d934ea285d124d81c10f7e15a06a1e1f74eff2c3/"
+    "CybersecurityBenchmarks/datasets/crwd_meta/malware_analysis/questions.json"
+)
 
 
 def jb_repo() -> Path:

@@ -124,6 +124,9 @@ def discover(bench: str, subset: str | None = None) -> dict[str, str]:
     elif bench == "binaudit":
         from .binaudit import discover as binaudit_discover
         return binaudit_discover()
+    elif bench == "cybersoc":
+        from .cybersoc import discover as cybersoc_discover
+        return cybersoc_discover()
     if not tasks:
         raise FileNotFoundError(
             f"No {bench} tasks found. Run harness2-setup "
