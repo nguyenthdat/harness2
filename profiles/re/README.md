@@ -149,6 +149,62 @@ Chỉ tạo placeholder khi sóng 1 xong. Chưa viết thân.
 | `binary-diff` | diffing-binary-patches, binary-diff |
 
 Không tạo `binary-diff` từ patch-diff-exploit.
+## Tối ưu hóa công cụ cài đặt theo nền tảng (OS) & vai trò
+
+Mục này cung cấp ma trận công cụ reverse engineering toàn diện, được phân loại theo vai trò phân tích (Static RE, Dynamic RE, Android Lab, iOS Lab, Hypervisor) và tương thích chi tiết theo từng hệ điều hành / package manager (`brew`, `apt-get`, `dnf`, `pacman`, `winget`).
+
+### 1. Phân loại theo vai trò phân tích
+
+- **Static RE (Phân tích tĩnh)**:
+  - `radare2` (`r2`): Khung phân tích nhị phân mã nguồn mở, disassembly, hex edit, scriptable.
+  - `jadx`: Dịch ngược APK, DEX, Java class ra mã nguồn Java chất lượng cao với GUI/CLI.
+  - `apktool`: Giải nén, phân rã tài nguyên APK (`res/`, `AndroidManifest.xml`) và mã Smali; build lại APK.
+  - `binwalk`: Trích xuất firmware, phân tích định dạng tệp nhị phân nén, filesystem carving.
+  - `tshark`: CLI engine của Wireshark để phân tích pcap, protocol dump, trích xuất payload mạng tĩnh.
+  - `ghidra` (hoặc `rea-agents`): Bộ SRE đa nền tảng mạnh mẽ với decompiler tiên tiến cho ARM, x86, MIPS.
+  - `ida-mcp`: Giao diện Model Context Protocol cho IDA Pro (khi môi trường có bản quyền IDA).
+
+- **Dynamic RE (Phân tích động)**:
+  - `frida-tools` (`frida`, `frida-trace`, `frida-ps`): Dynamic binary instrumentation, hook JavaScript trực tiếp vào runtime bộ nhớ.
+  - `mitmproxy` (`mitmdump`, `mitmweb`): HTTPS/TLS proxy đánh chặn, giải mã và chỉnh sửa lưu lượng mạng HTTP/1, HTTP/2, WebSocket.
+  - `qemu` (`qemu-system-*`, `qemu-user-*`): Giả lập đa kiến trúc CPU phục vụ phân tích cross-platform.
+
+- **Android Lab (Emulator + KernelSU Rooting)**:
+  - `android-platform-tools` (`adb`): Android Debug Bridge điều khiển thiết bị, shell, port forwarding.
+  - `emulator`: Trình giả lập Android Studio chính thức chạy phần cứng tăng tốc (HAXM / Hypervisor.Framework / KVM).
+  - `cmdline-tools` (`avdmanager`, `sdkmanager`): Quản lý tạo/xóa AVD, tải và cập nhật system image.
+  - **Google Play arm64-v8a System Images**: Image sản xuất thực tế có Play Store (API 34, 35, 36, 37.0).
+  - **KernelSU GKI Kernel Replacement**: Thay thế `kernel-ranchu` bằng nhân GKI Linux hỗ trợ KernelSU (`Image` từ prebuilt AnyKernel3 zip: `6.6.66-android15-*`, `6.12.58-android16-*`).
+  - **KernelSU Manager APK**: Ứng dụng quản trị quyền root mức nhân (`KernelSU_Next_*.apk`).
+  - **Tài liệu tham chiếu chi tiết**:
+    - Hướng dẫn cấu hình: `/Users/datnguyen/Projects/android-emu-ksu/rooting-android-studio-emulator-with-kernelsu-apple-silicon-m1-m2-m3-m4-enable-root-on-google-play-images.md`
+    - Kho tài nguyên prebuilt: `/Users/datnguyen/Projects/android-emu-ksu/download/`
+    - Kịch bản tự động hóa: `profiles/re/agent/skills/tool-setup/scripts/setup_android_emulator.py`
+
+- **iOS Lab (macOS only)**:
+  - Xcode Command Line Tools (`xcrun`, `lldb`).
+  - `xcrun simctl`: Điều khiển iOS Simulator (boot, install, launch, capture).
+  - `frida`: Hook runtime trên iOS Simulator hoặc thiết bị jailbreak.
+
+- **Hypervisor theo OS**:
+  - **Linux**: KVM (`/dev/kvm`), `qemu-kvm`. Tối ưu tốc độ ảo hóa native phần cứng.
+  - **macOS**: Parallels Desktop (`prlctl`) hoặc UTM / Apple Hypervisor.Framework.
+  - **Windows**: VMware Workstation (`vmrun`) hoặc Hyper-V / WSL2.
+
+### 2. Ma trận gói cài đặt theo Package Manager
+
+| Công cụ | macOS (`brew`) | Debian/Ubuntu (`apt-get`) | Fedora/RHEL (`dnf`) | Arch Linux (`pacman`) | Windows (`winget`) |
+| --- | --- | --- | --- | --- | --- |
+| `radare2` | `radare2` | `radare2` | `radare2` | `radare2` | `radare2.radare2` |
+| `jadx` | `jadx` | `jadx` | `jadx` | `jadx` | `Skylot.Jadx` |
+| `apktool` | `apktool` | `apktool` | `apktool` | `android-apktool` | `iBotPeaches.Apktool` |
+| `binwalk` | `binwalk` | `binwalk` | `binwalk` | `binwalk` | Thủ công / WSL2 |
+| `tshark` | `wireshark` | `tshark` | `wireshark-cli` | `wireshark-cli` | `WiresharkFoundation.Wireshark` |
+| `frida-tools`| `pipx install frida-tools` | `pipx install frida-tools` | `pipx install frida-tools` | `frida-tools` | `pip install frida-tools` |
+| `mitmproxy` | `mitmproxy` | `mitmproxy` | `mitmproxy` | `mitmproxy` | `Mitmproxy.Mitmproxy` |
+| `qemu` | `qemu` | `qemu-system-x86 qemu-kvm` | `qemu-kvm` | `qemu-desktop` | `SoftwareFreedomConservancy.QEMU` |
+| `adb` | `android-platform-tools` | `adb` | `android-tools` | `android-tools` | `Google.PlatformTools` |
+| `cmdline-tools`| `android-commandlinetools` | SDK Manager | SDK Manager | `android-sdk-cmdline-tools-latest` | Android Studio SDK |
 
 ## Dynamic
 
@@ -159,6 +215,21 @@ Static là mặc định. Dynamic (debugger, Frida, emulator, proxy) khi parent 
 Hợp đồng static của task vẫn thắng. Task ghi static-only, hoặc chỉ tên `file`, `strings`, `objdump`, hoặc deliverable là schema JSON cộng `evidence.md` của `static-artifact-analysis`, thì không chạy, không debug, không emulate, không detonate.
 
 Plan này không phải hướng dẫn Frida.
+
+## Framework viết harness
+
+Chưa thành skill và không nằm trong allowlist của `tool-setup`. Bốn framework đầu cho firmware hoặc malware không có source. OSS-Fuzz-Gen và CKGFuzzer chỉ khi đã có source C/C++ hoặc header biên dịch được. Plan này chỉ ghi framework nào trả lời câu hỏi nào. Không có lệnh build, không có lệnh fuzz.
+
+|Framework|Câu hỏi nó trả lời|Repo|
+|---|---|---|
+|Qiling + UnicornAFL|Firmware và malware. Qiling, trên Unicorn, hiểu PE và ELF, mock syscall hoặc Windows API bằng Python. Chạy binary đến ngay trước parser hoặc decryptor, chụp snapshot, rồi bơm input từ AFL++ vào thanh ghi hoặc bộ nhớ.|https://github.com/qilingframework/qiling và https://github.com/AFLplusplus/unicornafl|
+|LibAFL, mode QEMU hoặc Frida|Fuzzer viết bằng Rust, khi cần tốc độ và hộp đen phức tạp hơn AFL++ thường.|https://github.com/AFLplusplus/LibAFL|
+|TinyInst và WinAFL|PE hoặc DLL Windows đóng, fuzz trong bộ nhớ, không cần source. TinyInst là lớp instrumentation. WinAFL dùng nó cho persistent mode.|https://github.com/googleprojectzero/TinyInst và https://github.com/googleprojectzero/winafl|
+|Hopper (`hopper-fuzzer`)|Thư viện động `.so` hoặc `.dll` không có source. Tự suy ràng buộc tham số và ghép lời gọi API thành harness.|https://github.com/FuzzAnything/hopper|
+|OSS-Fuzz-Gen|Đã có source C/C++, driver, hoặc header cộng mã giả từ Ghidra/IDA mà biên dịch lại được. LLM đọc AST và call graph, sinh `LLVMFuzzerTestOneInput`, tự biên dịch, đọc lỗi biên dịch hoặc crash giả do con trỏ sai hoặc struct chưa khởi tạo, rồi sửa harness.|https://github.com/google/oss-fuzz-gen|
+|CKGFuzzer|Thư viện C/C++ phải gọi API đúng thứ tự. Code knowledge graph cộng LLM sinh driver cho chuỗi kiểu `init_ctx` rồi `parse_header` rồi `process_body` rồi `free_ctx`.|https://github.com/security-pride/CKGFuzzer|
+
+Ánh xạ plan: Qiling gắn với sóng 2 `firmware` và với `malware-analysis`. WinAFL chỉ cho target Windows. Hopper không phải disassembler Hopper. Không tải kernel, không viết harness trong sóng 1. Hai framework này chỉ khi có source hoặc header biên dịch được. Không dùng chúng cho binary đóng. Không đưa vào sóng 1.
 
 ## Nguồn
 
@@ -171,3 +242,11 @@ https://github.com/mandiant/capa-rules
 https://github.com/OWASP/mastg
 https://github.com/frida/frida
 https://github.com/mitmproxy/mitmproxy
+https://github.com/qilingframework/qiling
+https://github.com/AFLplusplus/unicornafl
+https://github.com/AFLplusplus/LibAFL
+https://github.com/googleprojectzero/TinyInst
+https://github.com/googleprojectzero/winafl
+https://github.com/FuzzAnything/hopper
+https://github.com/google/oss-fuzz-gen
+https://github.com/security-pride/CKGFuzzer

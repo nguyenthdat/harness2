@@ -34,16 +34,26 @@ KERNELSU_DOWNLOAD = Path("/Users/datnguyen/Projects/android-emu-ksu/download")
 KERNELSU_IMAGE = KERNELSU_DOWNLOAD / "Image"
 MANAGERS: tuple[str, ...] = ("brew", "apt-get", "dnf", "pacman", "winget")
 ROOT_MANAGERS: frozenset[str] = frozenset({"apt-get", "dnf", "pacman"})
-STATIC_ORDER: tuple[str, ...] = ("radare2", "apktool", "mitmproxy", "tshark")
+STATIC_ORDER: tuple[str, ...] = (
+    "radare2",
+    "apktool",
+    "mitmproxy",
+    "tshark",
+    "binwalk",
+    "jadx",
+)
 TOOL_COMMANDS: dict[str, str] = {
     "radare2": "r2",
     "jadx": "jadx",
     "apktool": "apktool",
+    "binwalk": "binwalk",
     "frida": "frida",
     "mitmproxy": "mitmdump",
     "tshark": "tshark",
     "adb": "adb",
     "emulator": "emulator",
+    "avdmanager": "avdmanager",
+    "sdkmanager": "sdkmanager",
     "qemu": "qemu-system-x86_64",
     "prlctl": "prlctl",
     "vmrun": "vmrun",
@@ -52,11 +62,15 @@ TOOL_COMMANDS: dict[str, str] = {
 }
 PRESENT_VIA_COMMAND: dict[str, str] = {
     "radare2": "r2",
+    "jadx": "jadx",
     "apktool": "apktool",
+    "binwalk": "binwalk",
     "mitmproxy": "mitmdump",
     "tshark": "tshark",
     "adb": "adb",
     "emulator": "emulator",
+    "avdmanager": "avdmanager",
+    "sdkmanager": "sdkmanager",
     "qemu-system-x86": "qemu-system-x86_64",
 }
 STATIC_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
@@ -65,30 +79,40 @@ STATIC_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
         "apktool": ("apktool",),
         "mitmproxy": ("mitmproxy",),
         "tshark": (),
+        "binwalk": ("binwalk",),
+        "jadx": ("jadx",),
     },
     "apt-get": {
         "radare2": ("radare2",),
         "apktool": ("apktool",),
         "mitmproxy": ("mitmproxy",),
         "tshark": ("tshark",),
+        "binwalk": ("binwalk",),
+        "jadx": ("jadx",),
     },
     "dnf": {
         "radare2": ("radare2",),
         "apktool": ("apktool",),
         "mitmproxy": ("mitmproxy",),
         "tshark": ("tshark",),
+        "binwalk": ("binwalk",),
+        "jadx": ("jadx",),
     },
     "pacman": {
         "radare2": ("radare2",),
         "apktool": ("apktool",),
         "mitmproxy": ("mitmproxy",),
         "tshark": ("tshark",),
+        "binwalk": ("binwalk",),
+        "jadx": ("jadx",),
     },
     "winget": {
         "radare2": (),
         "apktool": (),
         "mitmproxy": (),
         "tshark": (),
+        "binwalk": (),
+        "jadx": (),
     },
 }
 Profile = Literal["static", "dynamic", "android", "ios"]
@@ -110,7 +134,7 @@ class AndroidInfo(TypedDict):
     adb: bool
     emulator: bool
     su: bool | None
-
+    setup_script: NotRequired[str]
 
 class IosSupported(TypedDict):
     supported: bool
@@ -354,10 +378,12 @@ def probe_su(adb_path: str | None) -> bool | None:
 
 def system_image_roots() -> list[Path]:
     candidates: list[Path] = []
-    android_home = os.environ.get("ANDROID_HOME", "").strip()
-    if android_home != "":
-        candidates.append(Path(android_home) / "system-images")
+    for env_var in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        val = os.environ.get(env_var, "").strip()
+        if val:
+            candidates.append(Path(val) / "system-images")
     candidates.append(Path.home() / "Library" / "Android" / "sdk" / "system-images")
+    candidates.append(Path.home() / "Android" / "Sdk" / "system-images")
     unique: list[Path] = []
     seen: set[str] = set()
     for candidate in candidates:
@@ -477,16 +503,20 @@ def detect(probe_android: bool) -> Report:
     su: bool | None = None
     if probe_android:
         su = probe_su(tools["adb"]["path"])
+    script_path = Path(__file__).with_name("setup_android_emulator.py")
+    android_info: AndroidInfo = {
+        "adb": tools["adb"]["present"],
+        "emulator": tools["emulator"]["present"],
+        "su": su,
+    }
+    if script_path.exists():
+        android_info["setup_script"] = str(script_path.resolve())
     return {
         "os": os_name,
         "package_manager": detect_package_manager(),
         "tools": tools,
         "hypervisor": hypervisor_for(os_name, tools["qemu"]["present"]),
-        "android": {
-            "adb": tools["adb"]["present"],
-            "emulator": tools["emulator"]["present"],
-            "su": su,
-        },
+        "android": android_info,
         "ios": ios_report(os_name),
         "kernelsu": kernelsu_report(),
     }
@@ -760,6 +790,9 @@ def install_profile(profile: Profile, report: Report) -> int:
     report["hypervisor"] = hypervisor_for(report["os"], tools["qemu"]["present"])
     report["android"]["adb"] = tools["adb"]["present"]
     report["android"]["emulator"] = tools["emulator"]["present"]
+    script_path = Path(__file__).with_name("setup_android_emulator.py")
+    if script_path.exists():
+        report["android"]["setup_script"] = str(script_path.resolve())
     emit(report)
     return 0
 

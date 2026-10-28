@@ -4,12 +4,11 @@ description: >-
   Detect the host and, only when the parent asks, install an allowlisted
   reverse-engineering tool set with that OS package manager. Linux prefers
   KVM, macOS prefers Parallels, and Windows prefers VMware. Android covers
-  the emulator, a su check, and a local KernelSU Image that may replace only
-  an emulator kernel-ranchu. iOS tooling is macOS only. Does not install IDA,
-  download KernelSU, or write a kernel on a physical device. Use when a
-  needed tool, emulator, or hypervisor is missing, or the parent asks to
-  prepare this machine. Do not use to launch a sample, rewrite mcp.json, or
-  run rea setup or rea doctor.
+  the emulator, a su check, avdmanager/sdkmanager, and a local KernelSU Image
+  that replaces an emulator kernel-ranchu on Google Play images. Provides
+  setup_android_emulator.py for automated AVD creation, patching, cold boot,
+  and root verification. iOS tooling is macOS only. Does not install IDA,
+  download unauthorized kernels, or write a kernel on a physical device.
 ---
 
 # Tool setup
@@ -34,18 +33,21 @@ Read the single JSON object on stdout.
 - `os` is `linux`, `darwin`, or `windows`.
 - `package_manager` is the first of `brew`, `apt-get`, `dnf`, `pacman`, and
   `winget` that exists, or `null`.
-- `tools` maps each name to `present` and `path`.
+- `tools` maps each name to `present` and `path`. Monitored tools include
+  `radare2`, `jadx`, `apktool`, `binwalk`, `frida`, `mitmproxy`, `tshark`,
+  `adb`, `emulator`, `avdmanager`, `sdkmanager`, `qemu`, `prlctl`, `vmrun`,
+  `xcrun`, and `ida-mcp`.
 - `hypervisor.preferred` is `kvm` on Linux, `parallels` on macOS, and `vmware`
   on Windows. `hypervisor.present` is that hypervisor, not QEMU.
   `hypervisor.qemu_present` is separate. Do not prefer QEMU over the platform
   hypervisor.
 - `android.su` is `null` unless `--probe-android` was passed.
+- `android.setup_script` reports the path to `setup_android_emulator.py`.
 - `ios.supported` is true only on macOS. Elsewhere `ios.reason` is
   `iOS tooling runs on macOS only`.
 - `kernelsu.status` is `manual` when
   `/Users/datnguyen/Projects/android-emu-ksu/download/Image` is absent.
-  `kernelsu.path` is that path. That is `kernelsu: manual`. Do not fetch a
-  GitHub release or any other kernel.
+  `kernelsu.path` is that path.
 
 A missing tool is not permission to fetch a random installer.
 
@@ -69,46 +71,101 @@ what is present, missing, manual, and unsupported.
 
 ### Profiles
 
-- static: radare2, apktool, mitmproxy, and tshark where that OS packages them.
-  Winget ids that are not known are `unmapped`.
+- static: `radare2`, `apktool`, `mitmproxy`, `tshark`, `binwalk`, `jadx` where
+  that OS packages them. Winget ids that are not known are `unmapped`.
 - dynamic: on Linux, `qemu-kvm` and `qemu-system-x86` when KVM is the
   preferred hypervisor and those packages exist. On macOS do not install
   Parallels. On Windows do not install VMware. The paid hypervisor is
   `manual`.
 - android: `android-platform-tools` on brew, or `adb` on apt, plus an
-  emulator package only when the distro package exists. No system image
-  download. KernelSU replacement is below.
+  emulator package only when the distro package exists.
 - ios: if `os` is not `darwin`, the program exits 2, installs nothing, and
   the reason is `iOS tooling runs on macOS only`. On macOS do not install
   Xcode. Report whether `simctl` is missing.
 
 Never install IDA, `ida-mcp`, or a Frida server binary onto a device.
 
-### KernelSU
+---
 
-Replacement runs only inside this program, and only when `--install android`
-was passed. The only source is a regular file named `Image` already in
-`/Users/datnguyen/Projects/android-emu-ksu/download/`. If it is absent, stop
-at `kernelsu: manual` and the path.
+## 3. Android Studio KernelSU Emulator Rooting Procedure
 
-The destination must be a regular file named `kernel-ranchu` inside an SDK
-`system-images` directory under `ANDROID_HOME` or
-`~/Library/Android/sdk/system-images`. The program replaces every such file
-under those roots. It writes a sibling `kernel-ranchu.orig` first when that
-backup is missing. It does not write a kernel on a physical device.
+Based on the rooting guide (`/Users/datnguyen/Projects/android-emu-ksu/rooting-android-studio-emulator-with-kernelsu-apple-silicon-m1-m2-m3-m4-enable-root-on-google-play-images.md`),
+production-grade Android security analysis (dynamic Frida hooking, Play Integrity API
+testing, unmasking root detection) requires root on **Google Play images** rather than
+AOSP / Google APIs images.
 
-If `kernelsu.cold_boot` is set, tell the parent that text. A cold boot is
-required, then `adb shell su -c id` is the check. Do not cold-boot. Do not
-start the emulator.
+### System Requirements
+- Host: Apple Silicon macOS (M1/M2/M3/M4, `arm64-v8a`) or Linux/Windows equivalent.
+- Android SDK: Command-line tools (`avdmanager`, `sdkmanager`), platform tools (`adb`), emulator.
+- System Image: `system-images;android-36;google_apis_playstore;arm64-v8a` (or `android-37.0`).
+- KernelSU Assets: Prebuilt GKI kernel `Image` (or AnyKernel3 zip e.g., `6.6.66-android15-*.zip`, `6.12.58-android16-*.zip`) and `KernelSU_Next_*.apk` located in `/Users/datnguyen/Projects/android-emu-ksu/download/`.
 
-`--probe-android` may run `adb shell su -c id` only when `adb devices`
-already shows exactly one device in state `device`. It does not start an
-emulator and it does not flash a device.
+### Manual Step-by-Step Procedure
 
-## 3. Never
+1. **Check Emulator Kernel Version**:
+   ```bash
+   adb shell uname -r
+   # Example: 6.6.66-android15-8 or 6.12.58-android16
+   ```
 
-- Do not launch a sample.
+2. **Obtain KernelSU GKI Kernel (`Image`)**:
+   Download prebuilt AnyKernel3 zip (Bypass version from WildKernels/GKI_KernelSU_SUSFS) or use local assets in `/Users/datnguyen/Projects/android-emu-ksu/download/`. Extract `Image`:
+   ```bash
+   unzip -p /Users/datnguyen/Projects/android-emu-ksu/download/6.6.66-android15-*.zip Image > /tmp/Image
+   ```
+
+3. **Locate and Replace `kernel-ranchu`**:
+   The emulator kernel is inside the Android SDK system image directory:
+   ```bash
+   SYS_IMG="$HOME/Library/Android/sdk/system-images/android-36/google_apis_playstore/arm64-v8a"
+   cp "$SYS_IMG/kernel-ranchu" "$SYS_IMG/kernel-ranchu.orig"
+   cp /tmp/Image "$SYS_IMG/kernel-ranchu"
+   ```
+
+4. **Cold Boot the Emulator**:
+   A cold boot is mandatory to bypass emulator kernel caching from quickboot snapshots:
+   ```bash
+   emulator -avd <AVD_NAME> -no-snapshot-load
+   ```
+
+5. **Wait for Device & Boot Completion**:
+   ```bash
+   adb wait-for-device
+   while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do sleep 2; done
+   ```
+
+6. **Install KernelSU Manager APK**:
+   ```bash
+   adb install -r /Users/datnguyen/Projects/android-emu-ksu/download/KernelSU_Next_*.apk
+   ```
+
+7. **Verify Root Access**:
+   ```bash
+   adb shell su -c id
+   # Output must be: uid=0(root) gid=0(root) groups=0(root) context=u:r:su:s0
+   ```
+
+---
+
+## 4. Automated Emulator Setup Script (`setup_android_emulator.py`)
+
+The companion automated script implements the full workflow cleanly:
+`uv run profiles/re/agent/skills/tool-setup/scripts/setup_android_emulator.py <subcommand>`
+
+Supported subcommands:
+- `list`: Inspects SDK path, tools, installed system images, AVDs, and KernelSU assets in `/Users/datnguyen/Projects/android-emu-ksu/download/`.
+- `create-avd [--name <name>] [--system-image <pkg>] [--device <device>]`: Creates AVD with `avdmanager`.
+- `patch-kernel [--system-image-path <path>] [--kernel-source <image_or_zip>]`: Backs up `kernel-ranchu` to `.orig` and replaces it with KernelSU GKI `Image` (extracting from AnyKernel3 zip if needed).
+- `cold-boot [--avd <name>] [--headless]`: Starts emulator with `-no-snapshot-load` (and optional `-no-window -no-audio`).
+- `wait-boot [--serial <serial>] [--timeout <sec>]`: Waits for `sys.boot_completed == 1`.
+- `install-apk [--apk <path>] [--serial <serial>]`: Installs `KernelSU_Next_*.apk` via `adb install -r`.
+- `verify-root [--serial <serial>]`: Runs `adb shell su -c id` and confirms `uid=0`.
+- `setup-all [--avd <name>] [--headless] [--timeout <sec>]`: Executes end-to-end patch, boot, install, and verification.
+
+All subcommands support `--json` for structured automation.
+
+## 5. Never
+
+- Do not launch an untrusted malware sample outside isolated sandbox conditions.
 - Do not rewrite `mcp.json` or run `rea setup` or `rea doctor`.
-- Do not download KernelSU, a kernel, or a system image.
-- Do not follow notes about bypass, Play Integrity, banking, or root
-  detection. This skill does not perform those steps.
+- Do not flash a physical connected device with emulator kernels.
