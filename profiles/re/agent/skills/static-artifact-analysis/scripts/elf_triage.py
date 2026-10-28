@@ -208,10 +208,15 @@ class Elf:
             die("symbol %r bytes fall outside the file" % sym["name"])
         return self.data[start : start + sym["size"]], start
 
+    def file_backed(self, sym):
+        idx = sym["shndx"]
+        # SHN_ABS, SHN_COMMON, and SHN_UNDEF are not section indexes.
+        return 0 < idx < len(self.sections)
+
     def find(self, name=None, rx=None):
         out = []
         for sym in self.symtab:
-            if not sym["shndx"]:
+            if not self.file_backed(sym):
                 continue
             if name is not None and sym["name"] != name:
                 continue

@@ -7,6 +7,8 @@ description: Read before the first IDA, REA, or shell analysis call. Selects the
 
 `skill://reverse-engineering` names the REA tool for each format. This rule chooses the engine.
 
+A schema JSON plus `evidence.md`, with `tools.json` naming `file`, `strings`, and `objdump`, stays on `skill://static-artifact-analysis` and those tools. Do not open IDA or REA for that task.
+
 1. Confirm the path and hash with `rule://sample-safety`.
 2. For header, import, certificate, resource, note, or archive inventory that a target-free REA tool covers, call that REA tool. Read its live input schema. Do not open a disassembler first.
 3. For native decompilation or cross-references, use the official `ida` MCP: `open_database` with `gui: false`, then `execute_python` or the connected query tool, then `close_database` for that instance only. `list_databases` and `reference` are the read-only checks. Use the live schema if an argument differs.

@@ -13,5 +13,5 @@ Open, before the matching action:
 
 - `skill://malware-analysis` for a suspicious sample, capability, packer, persistence, injection, C2, or IOC report.
 - `skill://reverse-engineering` before the first REA or IDA call on an unfamiliar format.
-- `skill://static-artifact-analysis` when the deliverable is a schema JSON plus `evidence.md`.
+- `skill://static-artifact-analysis` before the first inspection when the deliverable is a schema JSON plus `evidence.md`. If `tools.json` names `file`, `strings`, and `objdump`, use only those tools and this skill. Do not open `skill://reverse-engineering`, IDA, or REA. Disassemble only the application span, then run the checker and reopen `evidence.md`.
 - `rule://sample-safety`, `rule://tool-routing`, `rule://evidence-claims`, `rule://ioc-extraction`, and `rule://anti-analysis` when that decision is in play.

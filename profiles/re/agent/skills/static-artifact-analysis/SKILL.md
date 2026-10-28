@@ -1,15 +1,15 @@
 ---
 name: static-artifact-analysis
-description: Produce a schema-conformant static analysis JSON and evidence.md for an ELF or PE artifact. Use when that pair is the deliverable. Field meanings, stop conditions, and the finish checklist live here. Does not execute the target.
+description: Produce a schema-conformant static analysis JSON and evidence.md for an ELF or PE artifact. Use before the first inspection when that pair is the deliverable. Bounds disassembly to application functions, checks both files, and does not execute the target.
 ---
 
 # Static artifact analysis
 
-Read this before writing either deliverable. `analysis.schema.json` supplies the field names and
-types; this skill governs what belongs in each field and how to keep the two deliverables
-consistent. Claim labels, dead code, and the decode bound are `rule://evidence-claims`.
-Capability prose that is not this JSON pair is `skill://malware-analysis`. The task remains
-authoritative for output paths.
+Read this before the first inspection when the deliverable is a schema JSON plus
+`evidence.md`. `analysis.schema.json` supplies the field names and types. Claim labels,
+dead code, and the decode bound are `rule://evidence-claims`. A host, port, or URL is
+`rule://ioc-extraction`. Capability prose that is not this JSON pair is
+`skill://malware-analysis`. The task remains authoritative for output paths.
 
 ## Hard rules
 
@@ -34,7 +34,7 @@ fields and types come from `analysis.schema.json`. Semantics:
 | `encoded_strings` | True only when at least one embedded string is stored transformed and decodes to text. An encrypted non-text payload is not an encoded string. |
 | `decoded_c2` | A string only when decoded bytes literally form a URL, `host:port`, IP, or equivalent endpoint. Otherwise `null`. Never a hex blob, description, or hypothesis. |
 | `c2_protocol` | Only with a decoded endpoint and a reachable use of it (connect/send/HTTP/DNS). A bare `socket(AF_INET, SOCK_STREAM)` does not prove a protocol. |
-| `techniques` | Short observed mechanism names, each with an instruction/address in evidence. No ELF properties, intentions, or mechanisms your evidence contradicts. |
+| `techniques` | Short observed mechanism names, each with an instruction/address in evidence. No ELF properties, intentions, or mechanisms your evidence contradicts. Do not use `socket_connect`; a connect is `decoded_c2` and `c2_protocol`. Do not add an umbrella label such as `tcp_reverse_shell` on top of the instructions that implement it. |
 | `encryption_details` | `algorithm`, `key`, `key_storage`: the implemented primitive, the key bytes/hex, and the symbol/VMA/file offset/size where it lives. |
 | `decoded_strings` | Decoded **text** values only. A binary blob belongs in `evidence.md`, not here. |
 | `anti_analysis` | Only anti-analysis behaviors/checks. Label unreachable code unreachable; never present it as active evasion. No hardening properties. |
@@ -82,18 +82,32 @@ filler assessment as a hypothesis.
 Substitute the task's artifact path for `target.bin`.
 
 1. **Contract first.** Read the task, `tools.json`, and `analysis.schema.json`; note the
-   deliverable paths and required fields.
+   deliverable paths and required fields. Do not open `skill://reverse-engineering` when
+   `tools.json` already names `file`, `strings`, and `objdump`. If `file` reports PE,
+   skip `elf_triage.py` and `elf_symbols.py`. Disassemble the entry and the functions it
+   calls directly with the `tools.json` `objdump`. Do not open IDA unless that `objdump`
+   cannot decode the architecture.
 2. **One deterministic triage pass.**
    `python3 scripts/elf_triage.py target.bin`
    Resolve `scripts/` from `.omp/skills/static-artifact-analysis/` when the workspace
    has that copy; otherwise use this profile's `skills/static-artifact-analysis/scripts/`.
-   The script prints format, per-LOAD deltas, section VMA/file pairs, `PT_GNU_STACK`,
-   and selected symbols. Use its numbers; do not re-derive offsets by hand.
-3. **Locate application code.**
-   `python3 .../elf_triage.py target.bin --find 'REGEX'` then disassemble only those
-   bounded ranges with
-   `gobjdump -d --no-show-raw-insn -M intel --start-address=... --stop-address=...`.
-   Follow direct call targets and data references; do not dump all of `.text` repeatedly.
+   Use the `file`, `strings`, and `objdump` paths in `tools.json` when that file exists.
+   Do not search for a second copy. One rejected flag is the tool's limit: LLVM
+   `objdump` rejects `--dwarf=info`, and some `strings` builds have no `-e`. Do not
+   retry that flag. The script prints format, per-LOAD deltas, section VMA/file pairs,
+   `PT_GNU_STACK`, and selected symbols. Use those numbers. Do not re-parse section
+   headers in a new snippet. An empty disassembly range usually means a VMA was passed
+   as a file offset. Translate once with `file_offset = sh_offset + (vma - sh_addr)`
+   and stop if the range is still empty.
+3. **Locate application code, then disassemble only that span.**
+   Take `main` (or the symbol the triage line named) and run
+   `python3 scripts/elf_symbols.py target.bin --span START END`
+   from that symbol to `symbol + size`. `--find` is only for a name already printed,
+   anchored (`^main$`), so it does not also match `start_main` or libc symbols.
+   `STT_FILE` names are source-file labels, not functions. Disassemble that window only:
+   `objdump -d --no-show-raw-insn -M intel --start-address=START --stop-address=END`.
+   Follow direct calls and data references. Do not write a full-image disassembly and
+   grep it. A static link makes `.text` mostly runtime, not the application.
 4. **Extract objects.**
    `python3 .../elf_triage.py target.bin --dump encrypted_payload,key`.
 5. **Decode once.**
@@ -102,8 +116,9 @@ Substitute the task's artifact path for `target.bin`.
    Use that output as the observation. If the bytes are not text, also disassemble the
    extracted hex as raw bytes (`gobjdump -D -b binary -m i386:x86-64` on a workspace temp
    file) to support the "not plausible code" classification; never run the bytes.
-6. **Bound the negative space in one pass.** For C2: `strings -a -t x` (ASCII) and
-   `strings -a -e l` (UTF-16LE), plus one case-insensitive URL/IP/port search. Allow one
+6. **Bound the negative space in one pass.** For C2: one `strings -a -t x` pass,
+   grepped for an endpoint. If `-e` is rejected, do not retry it; read a short window
+   of the referenced bytes with the standard library instead. Allow one
    primary decode plus at most two documented alternatives with concrete reasons (for
    example raw key bytes versus the ASCII rendering of the key). If none yields a URL,
    address, readable text, or valid code, write the negative and stop. Do not launch an
@@ -115,10 +130,11 @@ Substitute the task's artifact path for `target.bin`.
    artifact beats a perfect analysis that never lands.
 8. **Check mechanically, then finish.**
    `python3 scripts/check_deliverables.py`
-   from the same skill directory as `elf_triage.py`.
-   checks structure, schema keys/types, and that evidence records commands and offsets.
-   Then reopen `evidence.md` and confirm every JSON value has a supporting observation. A
-   successful write is not proof of usability.
+   from the same skill directory as `elf_triage.py`. It checks structure, schema keys
+   and types, and that evidence records commands and offsets.
+   On FAIL, fix the named defect once. On PASS, reopen `evidence.md` and confirm every
+   JSON value has a command plus an address or file offset in that file. A successful
+   write is not that check. Re-run the checker after any later edit.
 
 **Reserve room for both artifacts.** Before any optional deepening, confirm both files
 exist and pass the checker. If time or budget is tight, stop investigating and finish them.
@@ -168,11 +184,13 @@ Split a timeout once. A read-only target is read, never modified.
 
 ## Helpers
 
-Both helpers are read-only, standard-library Python, and travel with this skill:
+These helpers are read-only, standard-library Python, and travel with this skill:
 
 - `scripts/elf_triage.py target.bin [--find REGEX | --dump NAMES | --xor BLOB --key KEY]`
-  parses headers/sections/symbols and decodes a repeating-key XOR object. It never executes
-  or loads the target.
+  parses headers/sections/symbols and decodes a repeating-key XOR object. `--find` skips
+  symbols that are not in a file-backed section. It never executes or loads the target.
+- `scripts/elf_symbols.py target.bin [--span START END]` prints `STT_FILE` names that are
+  not `.o` runtime objects, and every FUNC/OBJECT in the span, with VMA and file offset.
 - `scripts/check_deliverables.py` validates that both artifacts exist, that the JSON is a
   bare object with the schema's required keys and basic types, and that evidence records
-  commands and offsets. It never edits the deliverables.
+  commands and offsets. It never edits the deliverables. A pass prints `RESULT: PASS`.
