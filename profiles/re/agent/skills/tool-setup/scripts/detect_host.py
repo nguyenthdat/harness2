@@ -58,7 +58,8 @@ TOOL_COMMANDS: dict[str, str] = {
     "vmrun": "vmrun",
     "xcrun": "xcrun",
     "ida-mcp": "ida-mcp",
-    "vphone": "vphone",
+    "vphone-cli": "vphone-cli",
+    "ipsw": "ipsw",
 }
 PRESENT_VIA_COMMAND: dict[str, str] = {
     "radare2": "r2",
@@ -72,6 +73,7 @@ PRESENT_VIA_COMMAND: dict[str, str] = {
     "avdmanager": "avdmanager",
     "sdkmanager": "sdkmanager",
     "qemu-system-x86": "qemu-system-x86_64",
+    "ipsw": "ipsw",
 }
 STATIC_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
     "brew": {
@@ -81,6 +83,7 @@ STATIC_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
         "tshark": (),
         "binwalk": ("binwalk",),
         "jadx": ("jadx",),
+        "ipsw": ("blacktop/tap/ipsw", "ipsw"),
     },
     "apt-get": {
         "radare2": ("radare2",),
@@ -89,6 +92,7 @@ STATIC_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
         "tshark": ("tshark",),
         "binwalk": ("binwalk",),
         "jadx": ("jadx",),
+        "ipsw": (),
     },
     "dnf": {
         "radare2": ("radare2",),
@@ -97,6 +101,7 @@ STATIC_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
         "tshark": ("tshark",),
         "binwalk": ("binwalk",),
         "jadx": ("jadx",),
+        "ipsw": (),
     },
     "pacman": {
         "radare2": ("radare2",),
@@ -105,6 +110,7 @@ STATIC_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
         "tshark": ("tshark",),
         "binwalk": ("binwalk",),
         "jadx": ("jadx",),
+        "ipsw": (),
     },
     "winget": {
         "radare2": (),
@@ -113,6 +119,7 @@ STATIC_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
         "tshark": (),
         "binwalk": (),
         "jadx": (),
+        "ipsw": (),
     },
 }
 Profile = Literal["static", "dynamic", "android", "ios"]
@@ -171,6 +178,13 @@ class SkipItem(TypedDict):
     package: NotRequired[str]
 
 
+class ProxyCaInfo(TypedDict):
+    cert_present: bool
+    cert_path: str | None
+    subject_hash: str | None
+    hash_filename: str | None
+    script: str
+
 class Report(TypedDict):
     os: str
     package_manager: str | None
@@ -179,6 +193,7 @@ class Report(TypedDict):
     android: AndroidInfo
     ios: IosSupported | IosUnsupported
     kernelsu: KernelsuInfo
+    proxy_ca: ProxyCaInfo
     installed: NotRequired[list[InstalledItem]]
     skipped: NotRequired[list[SkipItem]]
     needs_root: NotRequired[str]
@@ -317,6 +332,8 @@ def detect_tools() -> dict[str, ToolInfo]:
     tools: dict[str, ToolInfo] = {}
     for name, command in TOOL_COMMANDS.items():
         found = shutil.which(command)
+        if found is None and name == "vphone-cli":
+            found = shutil.which("vphone")
         tools[name] = {"present": found is not None, "path": found}
     return tools
 
@@ -351,7 +368,7 @@ def ios_report(os_name: str) -> IosSupported | IosUnsupported:
     if os_name != "darwin":
         return {"supported": False, "reason": IOS_UNSUPPORTED}
     vphone_present = (
-        shutil.which("vphone") is not None or shutil.which("vphone-cli") is not None
+        shutil.which("vphone-cli") is not None or shutil.which("vphone") is not None
     )
     rooted_vm_supported = platform.machine() in ("arm64", "aarch64")
     return {
@@ -516,6 +533,37 @@ def kernelsu_report() -> KernelsuInfo:
         "kernel_ranchu": [str(kernel) for kernel in kernels],
     }
 
+def proxy_ca_report() -> ProxyCaInfo:
+    ca_path = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
+    script_path = Path(__file__).with_name("setup_proxy_ca.py")
+    script = str(script_path.resolve()) if script_path.exists() else str(script_path)
+    if not ca_path.exists():
+        return {
+            "cert_present": False,
+            "cert_path": None,
+            "subject_hash": None,
+            "hash_filename": None,
+            "script": script,
+        }
+    openssl = shutil.which("openssl") or "/usr/bin/openssl"
+    proc = run_cmd([openssl, "x509", "-inform", "PEM", "-subject_hash_old", "-in", str(ca_path), "-noout"], 10)
+    if proc is None or proc.returncode != 0:
+        proc = run_cmd([openssl, "x509", "-inform", "PEM", "-subject_hash_old", "-in", str(ca_path)], 10)
+    subject_hash: str | None = None
+    hash_filename: str | None = None
+    if proc is not None and proc.returncode == 0:
+        lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+        if lines:
+            subject_hash = lines[0]
+            hash_filename = f"{subject_hash}.0"
+    return {
+        "cert_present": True,
+        "cert_path": str(ca_path),
+        "subject_hash": subject_hash,
+        "hash_filename": hash_filename,
+        "script": script,
+    }
+
 def detect(probe_android: bool) -> Report:
     os_name = detect_os()
     tools = detect_tools()
@@ -538,6 +586,7 @@ def detect(probe_android: bool) -> Report:
         "android": android_info,
         "ios": ios_report(os_name),
         "kernelsu": kernelsu_report(),
+        "proxy_ca": proxy_ca_report(),
     }
 
 
@@ -707,6 +756,11 @@ def android_requests(manager: str | None) -> list[Candidates]:
     return [("adb", ()), ("emulator", ())]
 
 
+def ios_requests(manager: str | None) -> list[Candidates]:
+    if manager == "brew":
+        return [("ipsw", ("blacktop/tap/ipsw", "ipsw"))]
+    return []
+
 def simctl_flag(ios_info: object) -> bool:
     if not isinstance(ios_info, dict):
         return False
@@ -813,6 +867,7 @@ def install_profile(profile: Profile, report: Report) -> int:
         extra = [{"name": "xcode", "reason": "manual"}]
         if not simctl_flag(report["ios"]):
             extra.append({"name": "simctl", "reason": "missing"})
+        requests = ios_requests(manager)
     result = apply_packages(manager, requests)
     result.skipped = extra + result.skipped
     if profile == "android":

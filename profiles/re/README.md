@@ -166,7 +166,7 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
 
 - **Dynamic RE (Phân tích động)**:
   - `frida-tools` (`frida`, `frida-trace`, `frida-ps`): Dynamic binary instrumentation, hook JavaScript trực tiếp vào runtime bộ nhớ.
-  - `mitmproxy` (`mitmdump`, `mitmweb`): HTTPS/TLS proxy đánh chặn, giải mã và chỉnh sửa lưu lượng mạng HTTP/1, HTTP/2, WebSocket.
+  - `mitmproxy` (`mitmdump`, `mitmweb`): HTTPS/TLS proxy đánh chặn, giải mã và chỉnh sửa lưu lượng mạng HTTP/1, HTTP/2, WebSocket. Hỗ trợ tự động hóa cài đặt System CA cho Android emulator / iOS Simulator và sinh kịch bản Frida bypass SSL Pinning (`setup_proxy_ca.py`).
   - `qemu` (`qemu-system-*`, `qemu-user-*`): Giả lập đa kiến trúc CPU phục vụ phân tích cross-platform.
 
 - **Android Lab (Emulator + KernelSU Rooting)**:
@@ -183,8 +183,10 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
 - **iOS Lab (macOS only)**:
   - Xcode Command Line Tools (`xcrun`, `lldb`).
   - `xcrun simctl`: Điều khiển iOS Simulator chuẩn (boot, install, launch, capture) - unrooted.
-  - **Rooted iOS Research VM (`vphone-cli`)**: Giải pháp chính cho máy ảo iOS có root ([vphone-cli](https://github.com/Lakr233/vphone-cli)). Khởi chạy virtual iPhone (iOS 26) trên macOS Apple Silicon thông qua `Virtualization.framework` và cơ chế Private Cloud Compute (PCC) research VM (`csrutil allow-research-guests enable`).
+  - **Rooted iOS Research VM (`vphone-cli`)**: Giải pháp chính cho máy ảo iOS có root ([vphone-cli](https://github.com/Lakr233/vphone-cli)). Khởi chạy virtual iPhone (iOS 26) trên macOS Apple Silicon thông qua `Virtualization.framework` và cơ chế Private Cloud Compute (PCC) research VM (`csrutil allow-research-guests enable`, `sudo VPhoneEscalator allow ...`).
   - **Jailbreak Firmware Patch (`make fw_patch_jb` / `JB=1`)**: Bộ 112 patch cung cấp quyền root hoàn chỉnh, SSH, Sileo package manager, TrollStore và hỗ trợ Frida server / dynamic runtime instrumentation phục vụ nghiên cứu bảo mật chuyên sâu.
+  - `blacktop/ipsw` ([ipsw](https://github.com/blacktop/ipsw)): Công cụ dòng lệnh CLI chuyên dụng để tải trực tiếp firmware Apple IPSW, giải nén kernelcache (`ipsw kernel dec`), phân rã dyld shared cache (`ipsw dyld split`), phân tích Mach-O.
+  - `https://ipsw.me/`: Cổng tra cứu và tải trực tiếp file IPSW chính thức từ Apple CDN theo từng model thiết bị và phiên bản iOS.
   - `frida`: Hook runtime trên iOS Simulator, rooted research VM (`vphone-cli`), hoặc thiết bị vật lý jailbreak.
 - **Hypervisor theo OS**:
   - **Linux**: KVM (`/dev/kvm`), `qemu-kvm`. Tối ưu tốc độ ảo hóa native phần cứng.
@@ -205,6 +207,7 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
 | `qemu` | `qemu` | `qemu-system-x86 qemu-kvm` | `qemu-kvm` | `qemu-desktop` | `SoftwareFreedomConservancy.QEMU` |
 | `adb` | `android-platform-tools` | `adb` | `android-tools` | `android-tools` | `Google.PlatformTools` |
 | `cmdline-tools`| `android-commandlinetools` | SDK Manager | SDK Manager | `android-sdk-cmdline-tools-latest` | Android Studio SDK |
+| `ipsw` | `blacktop/tap/ipsw` | Thủ công / GitHub releases | Thủ công / GitHub releases | `ipsw` (AUR) | GitHub releases |
 
 ## Dynamic
 
@@ -251,3 +254,5 @@ https://github.com/FuzzAnything/hopper
 https://github.com/google/oss-fuzz-gen
 https://github.com/security-pride/CKGFuzzer
 https://github.com/Lakr233/vphone-cli
+https://github.com/blacktop/ipsw
+https://ipsw.me/
