@@ -1,96 +1,48 @@
 ---
 name: reverse-engineering
-description: Reverse engineer native, managed, Electron/JavaScript, packaged, firmware, and browser targets with REA. Use shipped-artifact or requested runtime evidence to explain features, compare versions, decompile code, or guide a reconstruction. Skip REA for ordinary source-repository architecture analysis.
+description: Route a shipped binary, package, or offline capture to the registered REA or IDA tool. Use for decompilation, imports, format inventory, and claims source does not establish. Skip ordinary source-repository architecture.
 metadata:
   version: "45"
 ---
 
 # Reverse engineering
 
-Use REA when a claim depends on a shipped binary or package, decompilation,
-passive application runtime evidence, or comparison with
-behavior not established by available source. For ordinary analysis of a
-complete source repository, use normal repository tools and do not run REA
-readiness or provider commands.
+Obey `RULES.md`. This skill only selects the REA or IDA operation. Capability
+and IOC questions start at `skill://malware-analysis`. A schema JSON plus
+`evidence.md` is `skill://static-artifact-analysis`.
 
-## Connect only when needed
+Use REA when a claim depends on a shipped binary or package, decompilation, or
+an offline capture, and source does not already establish it. For ordinary
+analysis of a complete source repository, do not run REA.
 
-Installing this skill supplies instructions; it does not register the REA MCP
-server, install analysis engines, or add tools to an already-running agent.
+## Registered tools
 
-If REA tools are available and their registration is not known to be stale,
-proceed directly to the target. Do not run diagnostics or setup before every
-investigation. Use the connected server's actual tool list and input schemas;
-a skill installed from repository main may describe capabilities absent from
-an older npm release. Keep complete inline Evidence when that server does not
+This profile already registers `ida` (official Hex-Rays IDA MCP, headless) and
+`rea` (Ghidra). Do not run `rea doctor`, `rea setup`, or `npx rea-agents`, and
+do not edit `mcp.json`. Engine choice is `rule://tool-routing`.
+
+Call a connected tool with its live input schema. A skill written for a newer
+REA release may name a tool this server does not advertise; skip that tool and
+record the gap. Keep complete inline Evidence when the server does not
 advertise retained references.
 
-If tools are absent, a call is blocked by the client, or a required provider is
-unavailable, read [connection and recovery](references/connection-and-recovery.md).
-Diagnose the observed blocker, continue useful supported work, and resume the
-original task after repair. Client approval, shell PATH, registration and engine
-availability have different remedies; avoid repeating setup for all of them.
-If the host times out without a REA result, do not repeat the unchanged call or
-assume work stopped. Read the recovery guide's deadline distinction before retrying.
-If the MCP connection drops, retry that call once only when it is safe to
-repeat or known not to have started. If it may already have changed the
-target, or it fails again, tell the user and ask them to restart the MCP
-client. If REA could not start its connection, retry once, then tell the user
-and ask them to restart the MCP client. Do not retry a startup failure that
-returns the same unchanged result. Run `rea doctor` when REA could not start
-or tools stay missing after that restart. For `cleanup_incomplete`, a retryable
-capacity limit, or `configuration_invalid`, follow the recovery guide's ladder
-before asking for a restart. Read that guide before a second repair attempt.
+If a call fails, read [connection and recovery](references/connection-and-recovery.md)
+only to classify a timeout, a bad argument, or a dropped connection. Do not
+apply any setup or registration command in that note. Retry a dropped call once
+only when it is safe to repeat or known not to have started. Do not repeat an
+unchanged call after a timeout. Continue with IDA or read-only triage for what
+those tools can answer.
 
-1. Diagnose without changing REA or client configuration. `npx` may download
-   the package and write to npm's cache. For Codex, run
-   `npx -y rea-agents@latest doctor --client codex --json`. Substitute the current
-   supported client: `claude_code`, `claude_desktop`, `codex`, `cursor`,
-   `gemini_cli`, `windsurf`, `devin`, `opencode`, `antigravity`, `copilot_cli`,
-   `commandcode`, `vscode`, `grok_build`, `omp`, or `grok_bot`. `grok_bot` has no local
-   file registration: doctor reports the Grok Bot chat step, and setup does not
-   write `mcp.json`. If the client is unknown, use `doctor --json` and
-   inspect its registration results before choosing a setup scope.
-2. Distinguish the reason. Missing, malformed, or stale registration needs a
-   scoped configuration repair. An aligned registration with no tools in the
-   active session needs a restart/reconnection; doctor cannot prove that the
-   current agent has connected. A missing provider affects only tasks requiring
-   that provider: static JavaScript inspection needs neither Hopper nor Ghidra,
-   and Android inspection has separate bring-your-own JADX/Java prerequisites.
-3. For a configuration repair, prepare the read-only plan:
-   `npx -y rea-agents@latest setup --client codex --dry-run --json`.
-   Use the current client's ID, show its exact proposed paths, backups, and
-   changes, and obtain approval before setup writes configuration or installs
-   Hopper. Setup normally installs the matching bundled skill too; include that
-   replacement in the reviewed plan. After approval, apply the same scope with
-   `npx -y rea-agents@latest setup --client codex --yes`. Add `--install-hopper`
-   only if that separate installation was needed and explicitly approved.
-4. Restart/reconnect the affected agent. Verify that REA tools actually appear
-   in the session, then resume the original investigation. If they remain
-   absent, inspect the client's MCP launch error rather than repeating setup.
-
-REA setup never installs or upgrades Node.js, npm, Homebrew, Java, Ghidra, IDA,
-JADX, Kuna, Binwalk, or Unblob. Use existing prerequisites; do not install unrelated
-software to repair
-MCP registration. For an unsupported client, use manual stdio registration
-with a version-pinned `rea-agents` package or continue through the CLI.
-
-A concrete CLI fallback for an operator-supplied JavaScript tree or ASAR is:
+For an operator-supplied JavaScript tree or ASAR, prefer the connected
+`analyze_javascript_application` tool. Use an already installed `rea` CLI only
+when that tool is absent:
 
 ```bash
-npx -y rea-agents@latest analyze-javascript-application /absolute/path/to/app --json
+rea analyze-javascript-application /absolute/path/to/app --json
 ```
 
-No MCP registration or native engine is required. Read the returned Evidence,
-graph, limitations, and unknowns with the same care as an MCP result; the CLI
-returns the Evidence record directly. This fallback does not establish that
-MCP is configured. Native CLI tasks still require their selected engine.
-Prefer an existing `rea` CLI. When none is installed and REA package acquisition
-is within the authorized scope, use `npx -y rea-agents@latest` in its place.
-Configuration repair starts with a read-only setup plan; show paths, backups and
-skill replacement before applying authorized changes. Preserve existing approval
-and target-execution boundaries. REA setup never installs or upgrades unrelated
-software, including Node.js, npm, Homebrew, Java, Ghidra, IDA, JADX, Kuna, Binwalk or Unblob.
+Do not download a REA package to obtain the CLI. Native CLI analysis still
+needs its selected engine. Do not launch the sample.
 
 ## Route the target first
 
@@ -124,11 +76,14 @@ explicit path or endpoint and do not need it.
 - .NET NativeAOT PE/ELF: native Ghidra analysis. Native code can yield pseudocode;
   consult the NativeAOT workflow in `references/native-and-artifacts.md` for
   optional metadata recovery and its supported host/layout boundary.
+- Do not launch a malware sample, its installer, or a process-capture of it.
+  Browser and Electron tools are only for a target the parent already has open,
+  or for reading a capture file.
 - User-owned browser page already open: `list_browser_targets`.
-- Browser action the agent must perform (click, type, navigate):
-  `capture_browser_scenario` with declared actions. See
-  [runtime observation](references/runtime-observation.md) for connect/launch
-  and the focused follow-up browser tools.
+- Browser action on an app the parent already has open, and that is not the
+  sample: `capture_browser_scenario` with declared actions. See
+  [runtime observation](references/runtime-observation.md) for connect and the
+  focused follow-up browser tools. Do not use it to launch a sample.
 - Fiddler Everywhere traffic or a native `.saz` capture: read the
   [Fiddler workflow](references/runtime-observation.md#fiddler-everywhere-traffic-debugging).
   Inspect saved SAZ with `inspect_web_network_capture` and `format: "saz"`;
@@ -239,6 +194,16 @@ explicit path or endpoint and do not need it.
   delivery requires `--evidence_output`.
   See the
   [Rust binary guide](https://github.com/morluto/rea/blob/main/docs/rust-binaries.md).
+- PE import and delay-load tables: `inspect_pe_imports` with the explicit local
+  PE32/PE32+ file. No Windows SDK. Preserve DLL names, named and ordinal
+  imports, ILT/IAT RVAs, delay-load descriptors, and the import hash. A missing
+  import directory is absence of that table, not proof the image never resolved
+  APIs another way. An import with no use is not a capability.
+- PE TLS callbacks and load configuration: `inspect_pe_load_config` with the
+  explicit local PE32/PE32+ file. No Windows SDK. Preserve callback VAs with
+  RVA, file offset, and section, plus the size-covered cookie, SafeSEH, CFG,
+  and related fields. Guard flags are linker declarations, not proof they are
+  enforced. A missing directory is absence of that declaration.
 - PE Authenticode certificate table: `inspect_pe_certificates` with the explicit
   local PE32/PE32+ file. This built-in target-free inspection requires no
   Windows SDK. Preserve WIN_CERTIFICATE ranges, types, payload SHA-256, and
@@ -294,17 +259,10 @@ explicit path or endpoint and do not need it.
   use focused analysis tools directly; call `binary_overview` when metadata or
   inventory context is useful and available from the selected provider.
 
-For an existing IDA MCP configuration, use `open_binary` with the original
-input binary and `provider_id: "ida"`; do not pass an `.idb` or `.i64` database.
-The legacy attached profile binds the already-open GUI input by SHA-256 and
-leaves its database open. The modern headless profile creates and closes an
-owned private database without saving. Installation and registration reuse
-[mrexodia/ida-pro-mcp](https://github.com/mrexodia/ida-pro-mcp); see the
-[IDA provider guide](https://github.com/morluto/rea/blob/main/docs/ida-provider.md).
-Proceed directly to `analyze_function`, pseudocode, or function/string searches
-after opening; IDA does not supply `binary_overview`. Consult session availability
-when composing broader workflows. Modern direct callers and unsupported dossier
-facets remain unknown; live IDA results are not replayed from snapshots.
+Native decompilation on this profile uses the official `ida` MCP, not REA
+`provider_id: "ida"` and not OMP's native `ida` tool. Follow
+`rule://tool-routing`. Do not pass an `.idb` or `.i64` as the input. REA
+`open_binary` is the Ghidra path when IDA cannot take the file.
 
 With `REA_KUNA_COMMAND` configured, `provider_id: "kuna"` answers procedure
 lists, lookups, pseudocode, assembly and `analyze_function` from Kuna's cached
@@ -386,8 +344,8 @@ containment relationships even after summary analysis.
 
 Every conclusion must distinguish observations, inferences, and unknowns. Cite
 Evidence IDs, preserve limitations and incomplete coverage, and never imply
-that static analysis observed execution. Runtime requests execute the declared
-target and lifecycle; do not broaden the target or action beyond those fields.
+that static analysis observed execution. Do not launch, attach to, or
+instrument the sample to produce that evidence.
 
 Within the user's requested investigation, call available analysis tools
 directly. REA does not require permission grants or per-call approval flags.
@@ -412,15 +370,10 @@ For requests that span multiple features or subsystems, use a staged workflow:
 4. Inspect relevant packaged resources and configuration alongside code when
    they affect the question. Use format-aware inventory and parsers; do not
    infer behavior from filenames, strings, or layout alone.
-5. Corroborate a conclusion with the evidence type it requires. Use runtime
-   observation only when static evidence cannot answer the question and the
-   required host runtime and OS access are available. For JavaScript behavior,
-   run probes against the actual app through the available browser, Electron,
-   or process capture workflow.
-6. Decompose work into independent questions. When parallel workers are
-   available and the questions do not depend on one another, assign distinct
-   scopes, point workers to existing evidence, and ask them to return sources,
-   conclusions, and unresolved gaps. Otherwise, work sequentially.
+5. Corroborate a conclusion with static evidence or an offline capture the
+   parent already supplied. Do not launch the sample to obtain a runtime trace.
+6. Decompose work into independent questions and answer them in this session.
+   Do not spawn subagents or task agents. Keep one finding ledger.
 7. Keep a concise finding ledger linking each conclusion to Evidence IDs,
    confidence/evidence type, search boundary, and remaining unknowns. Update
    the shared index or investigation report so later passes can reuse results.
@@ -446,7 +399,7 @@ as complete while required questions remain open.
 
 ## Finish the task
 
-Explain findings in plain language and tie them to returned evidence. When the
-user asks to build something, use normal coding tools and separate observed
-behavior from design choices. Close an opened native session with
-`close_binary` when the investigation is complete.
+Explain findings in plain language and tie them to returned evidence. Do not
+turn the analysis into a port, a product, or another agent. Close an opened
+native session with `close_binary` when the investigation is complete, and
+close any IDA database this session opened.

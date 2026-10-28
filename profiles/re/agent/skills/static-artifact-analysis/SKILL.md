@@ -1,13 +1,15 @@
 ---
 name: static-artifact-analysis
-description: Use for static analysis of a compiled artifact (ELF/PE) where the deliverable is a schema-conformant analysis JSON plus evidence.md. Covers the field contract, observation-vs-hypothesis discipline, encoded-string/C2/technique/dead-code decision rules, stop conditions, the finish checklist, and verified facts for this workspace's target.bin.
+description: Produce a schema-conformant static analysis JSON and evidence.md for an ELF or PE artifact. Use when that pair is the deliverable. Field meanings, stop conditions, and the finish checklist live here. Does not execute the target.
 ---
 
 # Static artifact analysis
 
-Read this before the first tool call. `analysis.schema.json` supplies the field names and
-types; this skill governs what belongs in each field, which claims need evidence, and how to
-keep the two deliverables consistent. The task remains authoritative for what to deliver.
+Read this before writing either deliverable. `analysis.schema.json` supplies the field names and
+types; this skill governs what belongs in each field and how to keep the two deliverables
+consistent. Claim labels, dead code, and the decode bound are `rule://evidence-claims`.
+Capability prose that is not this JSON pair is `skill://malware-analysis`. The task remains
+authoritative for output paths.
 
 ## Hard rules
 
@@ -82,9 +84,11 @@ Substitute the task's artifact path for `target.bin`.
 1. **Contract first.** Read the task, `tools.json`, and `analysis.schema.json`; note the
    deliverable paths and required fields.
 2. **One deterministic triage pass.**
-   `python3 .omp/skills/static-artifact-analysis/scripts/elf_triage.py target.bin`
-   prints format, per-LOAD deltas, section VMA/file pairs, `PT_GNU_STACK`, and selected
-   symbols. Use its numbers; do not re-derive offsets by hand.
+   `python3 scripts/elf_triage.py target.bin`
+   Resolve `scripts/` from `.omp/skills/static-artifact-analysis/` when the workspace
+   has that copy; otherwise use this profile's `skills/static-artifact-analysis/scripts/`.
+   The script prints format, per-LOAD deltas, section VMA/file pairs, `PT_GNU_STACK`,
+   and selected symbols. Use its numbers; do not re-derive offsets by hand.
 3. **Locate application code.**
    `python3 .../elf_triage.py target.bin --find 'REGEX'` then disassemble only those
    bounded ranges with
@@ -110,7 +114,8 @@ Substitute the task's artifact path for `target.bin`.
    deliverables from established observations, then deepen and update. A partial correct
    artifact beats a perfect analysis that never lands.
 8. **Check mechanically, then finish.**
-   `python3 .omp/skills/static-artifact-analysis/scripts/check_deliverables.py`
+   `python3 scripts/check_deliverables.py`
+   from the same skill directory as `elf_triage.py`.
    checks structure, schema keys/types, and that evidence records commands and offsets.
    Then reopen `evidence.md` and confirm every JSON value has a supporting observation. A
    successful write is not proof of usability.

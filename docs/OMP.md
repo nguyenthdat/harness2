@@ -231,13 +231,13 @@ for example `~/.omp/profiles/coder/agent/`. Move components by hand:
 | `scripts/<name>.py` | `skills/<skill>/scripts/<name>.py` | A profile has no workspace `scripts/`; update the path in the rule or skill that runs it |
 | `.omp/extensions/<name>.ts` | `extensions/<name>.ts` | Loaded in every session; read it before copying |
 
-The repository's RE profile keeps six canonical skills in `profiles/re/agent/skills/`:
-[c-to-rust-port](../profiles/re/agent/skills/c-to-rust-port/SKILL.md),
-[python-coding](../profiles/re/agent/skills/python-coding/SKILL.md),
-[repository-change](../profiles/re/agent/skills/repository-change/SKILL.md),
+The repository's RE profile keeps three skills in `profiles/re/agent/skills/`:
+[malware-analysis](../profiles/re/agent/skills/malware-analysis/SKILL.md),
 [reverse-engineering](../profiles/re/agent/skills/reverse-engineering/SKILL.md),
-[rust-coding](../profiles/re/agent/skills/rust-coding/SKILL.md), and
+and
 [static-artifact-analysis](../profiles/re/agent/skills/static-artifact-analysis/SKILL.md).
+It is a leaf analyst: it does not define subagents. Standing constraints are in
+`profiles/re/agent/RULES.md`; on-demand rules are in `profiles/re/agent/rules/`.
 Each directory matches its YAML `name`; load it with `skill://<name>`.
 
 ```bash
