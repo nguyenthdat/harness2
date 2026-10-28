@@ -177,15 +177,15 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
   - **KernelSU GKI Kernel Replacement**: Thay thế `kernel-ranchu` bằng nhân GKI Linux hỗ trợ KernelSU (`Image` từ AnyKernel3 zip: `6.6.66-android15-*`, `6.12.58-android16-*` được tải tự động từ official GitHub releases).
   - **KernelSU Manager APK**: Ứng dụng quản trị quyền root mức nhân (`KernelSU_Next_*.apk` tải tự động từ GitHub releases).
   - **Tài liệu tham chiếu & Kịch bản tự động**:
-    - Hướng dẫn cấu hình: `/Users/datnguyen/Projects/android-emu-ksu/rooting-android-studio-emulator-with-kernelsu-apple-silicon-m1-m2-m3-m4-enable-root-on-google-play-images.md`
-    - Cache tài nguyên KernelSU: `~/.cache/android-ksu/` (hoặc `ANDROID_KSU_CACHE_DIR`, tự động tải từ GitHub releases khi thiếu)
+    - Phương pháp rooting: Thay thế nhân Linux GKI (KernelSU) trên emulator Google Play image chính thức của Android Studio.
+    - Cache tài nguyên KernelSU: `~/.cache/android-ksu/` (hoặc biến môi trường `ANDROID_KSU_CACHE_DIR`, tự động tải từ official GitHub releases khi thiếu).
     - Kịch bản tự động hóa: `profiles/re/agent/skills/tool-setup/scripts/setup_android_emulator.py` (hỗ trợ `download`, `create-avd`, `patch-kernel`, `cold-boot`, `wait-boot`, `install-apk`, `verify-root`, `setup-all`)
-
 - **iOS Lab (macOS only)**:
   - Xcode Command Line Tools (`xcrun`, `lldb`).
-  - `xcrun simctl`: Điều khiển iOS Simulator (boot, install, launch, capture).
-  - `frida`: Hook runtime trên iOS Simulator hoặc thiết bị jailbreak.
-
+  - `xcrun simctl`: Điều khiển iOS Simulator chuẩn (boot, install, launch, capture) - unrooted.
+  - **Rooted iOS Research VM (`vphone-cli`)**: Giải pháp chính cho máy ảo iOS có root ([vphone-cli](https://github.com/Lakr233/vphone-cli)). Khởi chạy virtual iPhone (iOS 26) trên macOS Apple Silicon thông qua `Virtualization.framework` và cơ chế Private Cloud Compute (PCC) research VM (`csrutil allow-research-guests enable`).
+  - **Jailbreak Firmware Patch (`make fw_patch_jb` / `JB=1`)**: Bộ 112 patch cung cấp quyền root hoàn chỉnh, SSH, Sileo package manager, TrollStore và hỗ trợ Frida server / dynamic runtime instrumentation phục vụ nghiên cứu bảo mật chuyên sâu.
+  - `frida`: Hook runtime trên iOS Simulator, rooted research VM (`vphone-cli`), hoặc thiết bị vật lý jailbreak.
 - **Hypervisor theo OS**:
   - **Linux**: KVM (`/dev/kvm`), `qemu-kvm`. Tối ưu tốc độ ảo hóa native phần cứng.
   - **macOS**: Parallels Desktop (`prlctl`) hoặc UTM / Apple Hypervisor.Framework.
@@ -250,3 +250,4 @@ https://github.com/googleprojectzero/winafl
 https://github.com/FuzzAnything/hopper
 https://github.com/google/oss-fuzz-gen
 https://github.com/security-pride/CKGFuzzer
+https://github.com/Lakr233/vphone-cli

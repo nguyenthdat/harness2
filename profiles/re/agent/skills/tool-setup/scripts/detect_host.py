@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shlex
 import shutil
 import stat
@@ -30,7 +31,6 @@ COLD_BOOT = (
     "This skill does not boot the emulator."
 )
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "android-ksu"
-LEGACY_DOWNLOAD_DIR = Path("/Users/datnguyen/Projects/android-emu-ksu/download")
 MANAGERS: tuple[str, ...] = ("brew", "apt-get", "dnf", "pacman", "winget")
 ROOT_MANAGERS: frozenset[str] = frozenset({"apt-get", "dnf", "pacman"})
 STATIC_ORDER: tuple[str, ...] = (
@@ -58,6 +58,7 @@ TOOL_COMMANDS: dict[str, str] = {
     "vmrun": "vmrun",
     "xcrun": "xcrun",
     "ida-mcp": "ida-mcp",
+    "vphone": "vphone",
 }
 PRESENT_VIA_COMMAND: dict[str, str] = {
     "radare2": "r2",
@@ -138,7 +139,9 @@ class AndroidInfo(TypedDict):
 class IosSupported(TypedDict):
     supported: bool
     simctl: bool
-
+    vphone_present: bool
+    rooted_vm_supported: bool
+    rooted_vm_solution: str
 
 class IosUnsupported(TypedDict):
     supported: bool
@@ -347,9 +350,17 @@ def simctl_available() -> bool:
 def ios_report(os_name: str) -> IosSupported | IosUnsupported:
     if os_name != "darwin":
         return {"supported": False, "reason": IOS_UNSUPPORTED}
-    return {"supported": True, "simctl": simctl_available()}
-
-
+    vphone_present = (
+        shutil.which("vphone") is not None or shutil.which("vphone-cli") is not None
+    )
+    rooted_vm_supported = platform.machine() in ("arm64", "aarch64")
+    return {
+        "supported": True,
+        "simctl": simctl_available(),
+        "vphone_present": vphone_present,
+        "rooted_vm_supported": rooted_vm_supported,
+        "rooted_vm_solution": "https://github.com/Lakr233/vphone-cli",
+    }
 def connected_device_count(text: str) -> int:
     count = 0
     for raw in text.splitlines():
@@ -467,20 +478,7 @@ def get_cache_dir() -> Path:
     env_dir = os.environ.get("ANDROID_KSU_CACHE_DIR")
     if env_dir:
         return Path(env_dir).expanduser().resolve()
-    if LEGACY_DOWNLOAD_DIR.is_dir():
-        has_files = any(
-            item.is_file()
-            and (
-                item.name == "Image"
-                or item.name.endswith(".zip")
-                or item.name.endswith(".apk")
-            )
-            for item in LEGACY_DOWNLOAD_DIR.iterdir()
-        )
-        if has_files:
-            return LEGACY_DOWNLOAD_DIR
     return DEFAULT_CACHE_DIR
-
 
 def local_kernelsu_image() -> Path | None:
     cache_dir = get_cache_dir()
@@ -744,40 +742,57 @@ def replace_one(image: Path, dest: Path) -> tuple[bool, str | None, str | None]:
 
 def apply_kernelsu(report: Report, result: ApplyResult) -> None:
     info = report["kernelsu"]
-    image = local_kernelsu_image()
-    if image is None:
-        info["status"] = "manual"
-        result.skipped.append({"name": "kernelsu", "reason": "manual"})
-        return
     targets = find_kernel_ranchu(system_image_roots())
     if not targets:
         info["status"] = "local"
         result.skipped.append({"name": "kernelsu", "reason": "no-kernel-ranchu"})
         return
+
+    image = local_kernelsu_image()
+    clean_dir: Path | None = None
+    if image is None:
+        try:
+            from setup_android_emulator import resolve_kernel_source
+
+            cache_dir = get_cache_dir()
+            image, clean_dir = resolve_kernel_source(
+                download_dir=cache_dir, target_dir=targets[0].parent
+            )
+        except Exception as exc:
+            info["status"] = "download-failed"
+            info["error"] = str(exc)
+            result.skipped.append({"name": "kernelsu", "reason": "download-failed"})
+            return
     replaced: list[str] = []
     backups: list[str] = []
     errors: list[str] = []
-    for dest in targets:
-        ok, backup, error = replace_one(image, dest)
-        if ok and backup is not None:
-            replaced.append(str(dest))
-            if backup not in backups:
-                backups.append(backup)
-            continue
-        if error is not None:
-            errors.append(f"{dest}: {error}")
-    if replaced:
-        info["status"] = "replaced"
-        info["replaced"] = replaced
-        info["backups"] = backups
-        info["cold_boot"] = COLD_BOOT
-        result.installed.append({"name": "kernelsu", "package": "Image"})
-    else:
-        info["status"] = "local"
-        result.skipped.append({"name": "kernelsu", "reason": "install-failed"})
-    if errors:
-        info["error"] = "; ".join(errors)
-
+    try:
+        for dest in targets:
+            ok, backup, error = replace_one(image, dest)
+            if ok and backup is not None:
+                replaced.append(str(dest))
+                if backup not in backups:
+                    backups.append(backup)
+                continue
+            if error is not None:
+                errors.append(f"{dest}: {error}")
+        if replaced:
+            info["status"] = "replaced"
+            info["replaced"] = replaced
+            info["backups"] = backups
+            info["cold_boot"] = COLD_BOOT
+            result.installed.append({"name": "kernelsu", "package": "Image"})
+        else:
+            info["status"] = "local"
+            result.skipped.append({"name": "kernelsu", "reason": "install-failed"})
+        if errors:
+            info["error"] = "; ".join(errors)
+    finally:
+        if clean_dir and clean_dir.is_dir():
+            try:
+                shutil.rmtree(clean_dir)
+            except OSError:
+                pass
 
 def install_profile(profile: Profile, report: Report) -> int:
     if profile == "ios" and report["os"] != "darwin":

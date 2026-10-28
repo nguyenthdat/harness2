@@ -1,5 +1,6 @@
 ---
 name: tool-setup
+description: >-
   Detect the host and, only when the parent asks, install an allowlisted
   reverse-engineering tool set with that OS package manager. Linux prefers
   KVM, macOS prefers Parallels, and Windows prefers VMware. Android covers
@@ -35,7 +36,7 @@ Read the single JSON object on stdout.
 - `tools` maps each name to `present` and `path`. Monitored tools include
   `radare2`, `jadx`, `apktool`, `binwalk`, `frida`, `mitmproxy`, `tshark`,
   `adb`, `emulator`, `avdmanager`, `sdkmanager`, `qemu`, `prlctl`, `vmrun`,
-  `xcrun`, and `ida-mcp`.
+  `xcrun`, `ida-mcp`, and `vphone`.
 - `hypervisor.preferred` is `kvm` on Linux, `parallels` on macOS, and `vmware`
   on Windows. `hypervisor.present` is that hypervisor, not QEMU.
   `hypervisor.qemu_present` is separate. Do not prefer QEMU over the platform
@@ -44,6 +45,11 @@ Read the single JSON object on stdout.
 - `android.setup_script` reports the path to `setup_android_emulator.py`.
 - `ios.supported` is true only on macOS. Elsewhere `ios.reason` is
   `iOS tooling runs on macOS only`.
+- `ios.simctl` indicates availability of Xcode `simctl`.
+- `ios.vphone_present` indicates presence of `vphone` or `vphone-cli`.
+- `ios.rooted_vm_supported` indicates whether the host architecture supports
+  rooted Apple Silicon virtual machines (`arm64`/`aarch64`).
+- `ios.rooted_vm_solution` points to `https://github.com/Lakr233/vphone-cli`.
 - `kernelsu.status` is `available`.
 - `kernelsu.auto_download` is `true`.
 - `kernelsu.cache_dir` reports the active cache directory (`~/.cache/android-ksu` or
@@ -80,25 +86,23 @@ what is present, missing, manual, and unsupported.
   emulator package only when the distro package exists.
 - ios: if `os` is not `darwin`, the program exits 2, installs nothing, and
   the reason is `iOS tooling runs on macOS only`. On macOS do not install
-  Xcode. Report whether `simctl` is missing.
-
+  Xcode. Report whether `simctl` is missing. For rooted iOS research VMs on
+  Apple Silicon, use `vphone-cli` (see section 5).
 Never install IDA, `ida-mcp`, or a Frida server binary onto a device.
 
 ---
 
 ## 3. Android Studio KernelSU Emulator Rooting Procedure
 
-Based on the rooting guide (`/Users/datnguyen/Projects/android-emu-ksu/rooting-android-studio-emulator-with-kernelsu-apple-silicon-m1-m2-m3-m4-enable-root-on-google-play-images.md`),
-production-grade Android security analysis (dynamic Frida hooking, Play Integrity API
+Production-grade Android security analysis (dynamic Frida hooking, Play Integrity API
 testing, unmasking root detection) requires root on **Google Play images** rather than
-AOSP / Google APIs images.
+AOSP / Google APIs images via Android Studio KernelSU GKI rooting methodology.
 
 ### System Requirements
 - Host: Apple Silicon macOS (M1/M2/M3/M4, `arm64-v8a`) or Linux/Windows equivalent.
 - Android SDK: Command-line tools (`avdmanager`, `sdkmanager`), platform tools (`adb`), emulator.
 - System Image: `system-images;android-36;google_apis_playstore;arm64-v8a` (or `android-37.0`).
-- KernelSU Assets: GKI kernel `Image` (or AnyKernel3 zip e.g., `6.6.66-android15-*.zip`, `6.12.58-android16-*.zip`) and `KernelSU_Next_*.apk` automatically downloaded from official GitHub releases to `~/.cache/android-ksu/` (or fallback to legacy `/Users/datnguyen/Projects/android-emu-ksu/download/` if present).
-
+- KernelSU Assets: GKI kernel `Image` (or AnyKernel3 zip e.g., `6.6.66-android15-*.zip`, `6.12.58-android16-*.zip`) and `KernelSU_Next_*.apk` automatically downloaded from official GitHub releases to `~/.cache/android-ksu/` (or custom directory specified via `--download-dir`).
 ### Manual Step-by-Step Procedure
 
 1. **Check Emulator Kernel Version**:
@@ -144,8 +148,6 @@ AOSP / Google APIs images.
    # Output must be: uid=0(root) gid=0(root) groups=0(root) context=u:r:su:s0
    ```
 
----
-
 ## 4. Automated Emulator Setup Script (`setup_android_emulator.py`)
 
 The companion automated script implements the full workflow cleanly:
@@ -162,8 +164,39 @@ Supported subcommands:
 - `verify-root [--serial <serial>]`: Runs `adb shell su -c id` and confirms `uid=0`.
 - `setup-all [--avd <name>] [--headless] [--timeout <sec>]`: Executes end-to-end download/patch, boot, install, and verification.
 All subcommands support `--json` for structured automation.
+---
 
-## 5. Never
+## 5. iOS Rooted Research Virtual Machine (`vphone-cli`)
+
+For dynamic analysis requiring a rooted iOS environment (kernel/jailbreak-level inspection,
+Frida server injection, tweaking system daemons, SSL unpinning):
+
+### Unrooted Simulator vs Rooted Research VM
+- **Standard iOS Simulator (`xcrun simctl`)**: Runs simulator Mach-O binaries in macOS userland; unrooted, lacks full iOS kernel/security sandbox isolation, and cannot run arm64e iOS device binaries or substrate-based jailbreak tweaks.
+- **Rooted iOS Research VM (`vphone-cli`)**: Bootstrapped by [vphone-cli](https://github.com/Lakr233/vphone-cli) (by Lakr233). Boots virtual iPhone (iOS 26) on Apple Silicon macOS leveraging Apple's `Virtualization.framework` and Private Cloud Compute (PCC) research VM infrastructure.
+
+### Host Prerequisites
+- **Host**: macOS 15+ running on Apple Silicon (M1/M2/M3/M4, `arm64`).
+- **Research Guest Entitlements / AMFI Policy**: Requires enabling research guest capability:
+  ```bash
+  sudo csrutil allow-research-guests enable
+  ```
+  (Requires reboot in Recovery OS if prompted by macOS).
+
+### Rooted VM Setup & Jailbreak Firmware Patch
+- Build or acquire `vphone-cli`:
+  ```bash
+  git clone https://github.com/Lakr233/vphone-cli.git
+  cd vphone-cli
+  make
+  ```
+- Use the **Jailbreak (JB) firmware patch variant** (`make fw_patch_jb` or `JB=1`, 112 patches) which provides:
+  - Full root shell access (`ssh root@<vm-ip>`).
+  - Sileo package manager and APT repository support.
+  - TrollStore integration for installing and resigning arbitrary research payloads.
+  - Frida server / dynamic runtime hooking support directly within the virtualized iOS environment.
+
+## 6. Never
 
 - Do not launch an untrusted malware sample outside isolated sandbox conditions.
 - Do not rewrite `mcp.json` or run `rea setup` or `rea doctor`.

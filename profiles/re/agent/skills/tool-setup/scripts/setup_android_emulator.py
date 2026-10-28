@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "android-ksu"
-LEGACY_DOWNLOAD_DIR = Path("/Users/datnguyen/Projects/android-emu-ksu/download")
 DEFAULT_AVD_NAME = "Pixel_10_KernelSU_Next"
 DEFAULT_DEVICE = "pixel_7"
 GITHUB_USER_AGENT = "android-ksu-setup/1.0"
@@ -37,21 +36,8 @@ def get_default_download_dir() -> Path:
         p = Path(env_dir).expanduser().resolve()
         p.mkdir(parents=True, exist_ok=True)
         return p
-    if LEGACY_DOWNLOAD_DIR.is_dir():
-        has_files = any(
-            item.is_file()
-            and (
-                item.name == "Image"
-                or item.name.endswith(".zip")
-                or item.name.endswith(".apk")
-            )
-            for item in LEGACY_DOWNLOAD_DIR.iterdir()
-        )
-        if has_files:
-            return LEGACY_DOWNLOAD_DIR
     DEFAULT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     return DEFAULT_CACHE_DIR
-
 class AssetInfo(TypedDict):
     name: str
     path: str
