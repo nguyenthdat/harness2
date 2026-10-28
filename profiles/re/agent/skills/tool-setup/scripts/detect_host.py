@@ -11,6 +11,7 @@ commands exist only as argument lists in this file. KernelSU replacement
 copies a local Image onto an emulator kernel-ranchu after writing
 kernel-ranchu.orig; writing to a physical device is forbidden.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,8 +28,7 @@ from typing import Literal, NotRequired, TypedDict
 
 IOS_UNSUPPORTED = "iOS tooling runs on macOS only"
 COLD_BOOT = (
-    "A cold boot is required before adb shell su -c id. "
-    "This skill does not boot the emulator."
+    "A cold boot is required before adb shell su -c id. This skill does not boot the emulator."
 )
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "android-ksu"
 MANAGERS: tuple[str, ...] = ("brew", "apt-get", "dnf", "pacman", "winget")
@@ -143,6 +143,7 @@ class AndroidInfo(TypedDict):
     su: bool | None
     setup_script: NotRequired[str]
 
+
 class IosSupported(TypedDict):
     supported: bool
     simctl: bool
@@ -150,6 +151,7 @@ class IosSupported(TypedDict):
     vphone_preflight_passed: bool
     rooted_vm_supported: bool
     rooted_vm_solution: str
+
 
 class IosUnsupported(TypedDict):
     supported: bool
@@ -168,6 +170,7 @@ class KernelsuInfo(TypedDict):
     cold_boot: NotRequired[str]
     error: NotRequired[str]
 
+
 class InstalledItem(TypedDict):
     name: str
     package: str
@@ -185,6 +188,7 @@ class ProxyCaInfo(TypedDict):
     subject_hash: str | None
     hash_filename: str | None
     script: str
+
 
 class Report(TypedDict):
     os: str
@@ -383,6 +387,8 @@ def ios_report(os_name: str) -> IosSupported | IosUnsupported:
         "rooted_vm_supported": rooted_vm_supported,
         "rooted_vm_solution": "https://github.com/Lakr233/vphone-cli",
     }
+
+
 def connected_device_count(text: str) -> int:
     count = 0
     for raw in text.splitlines():
@@ -502,6 +508,7 @@ def get_cache_dir() -> Path:
         return Path(env_dir).expanduser().resolve()
     return DEFAULT_CACHE_DIR
 
+
 def local_kernelsu_image() -> Path | None:
     cache_dir = get_cache_dir()
     image_path = cache_dir / "Image"
@@ -538,6 +545,7 @@ def kernelsu_report() -> KernelsuInfo:
         "kernel_ranchu": [str(kernel) for kernel in kernels],
     }
 
+
 def proxy_ca_report() -> ProxyCaInfo:
     ca_path = Path.home() / ".mitmproxy" / "mitmproxy-ca-cert.pem"
     script_path = Path(__file__).with_name("setup_proxy_ca.py")
@@ -551,9 +559,13 @@ def proxy_ca_report() -> ProxyCaInfo:
             "script": script,
         }
     openssl = shutil.which("openssl") or "/usr/bin/openssl"
-    proc = run_cmd([openssl, "x509", "-inform", "PEM", "-subject_hash_old", "-in", str(ca_path), "-noout"], 10)
+    proc = run_cmd(
+        [openssl, "x509", "-inform", "PEM", "-subject_hash_old", "-in", str(ca_path), "-noout"], 10
+    )
     if proc is None or proc.returncode != 0:
-        proc = run_cmd([openssl, "x509", "-inform", "PEM", "-subject_hash_old", "-in", str(ca_path)], 10)
+        proc = run_cmd(
+            [openssl, "x509", "-inform", "PEM", "-subject_hash_old", "-in", str(ca_path)], 10
+        )
     subject_hash: str | None = None
     hash_filename: str | None = None
     if proc is not None and proc.returncode == 0:
@@ -568,6 +580,7 @@ def proxy_ca_report() -> ProxyCaInfo:
         "hash_filename": hash_filename,
         "script": script,
     }
+
 
 def detect(probe_android: bool) -> Report:
     os_name = detect_os()
@@ -736,9 +749,7 @@ def static_requests(manager: str | None) -> list[Candidates]:
     return [(name, table.get(name, ())) for name in STATIC_ORDER]
 
 
-def dynamic_requests(
-    os_name: str, manager: str | None
-) -> tuple[list[Candidates], list[SkipItem]]:
+def dynamic_requests(os_name: str, manager: str | None) -> tuple[list[Candidates], list[SkipItem]]:
     if os_name == "darwin":
         return [], [{"name": "parallels", "reason": "manual"}]
     if os_name == "windows":
@@ -765,6 +776,7 @@ def ios_requests(manager: str | None) -> list[Candidates]:
     if manager == "brew":
         return [("ipsw", ("blacktop/tap/ipsw", "ipsw"))]
     return []
+
 
 def simctl_flag(ios_info: object) -> bool:
     if not isinstance(ios_info, dict):
@@ -852,6 +864,7 @@ def apply_kernelsu(report: Report, result: ApplyResult) -> None:
                 shutil.rmtree(clean_dir)
             except OSError:
                 pass
+
 
 def install_profile(profile: Profile, report: Report) -> int:
     if profile == "ios" and report["os"] != "darwin":

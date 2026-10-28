@@ -269,8 +269,7 @@ class CommandResult(TypedDict):
     action: str
     message: str
     details: NotRequired[dict[str, Any]]
-    error: NotRequired[str]
-
+    error: NotRequired[str | None]
 
 def run_process(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(

@@ -38,6 +38,8 @@ def get_default_download_dir() -> Path:
         return p
     DEFAULT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     return DEFAULT_CACHE_DIR
+
+
 class AssetInfo(TypedDict):
     name: str
     path: str
@@ -63,6 +65,13 @@ class ListReport(TypedDict):
     system_images: list[SystemImageInfo]
     avds: list[str]
     assets: list[AssetInfo]
+
+
+class CreateAvdResult(TypedDict):
+    avd: str
+    system_image_package: str
+    device: str
+    success: bool
 
 
 class ColdBootResult(TypedDict):
@@ -244,11 +253,10 @@ def get_default_system_image_path(sdk_root: Path | None) -> Path | None:
         if img["abi"] == arch and "playstore" in img["tag"] and img["kernel_ranchu_exists"]
     ]
     if not candidates:
-        candidates = [
-            img for img in images if img["abi"] == arch and img["kernel_ranchu_exists"]
-        ]
+        candidates = [img for img in images if img["abi"] == arch and img["kernel_ranchu_exists"]]
     if not candidates:
         return None
+
     # Sort descending by api version
     def api_key(img: SystemImageInfo) -> str:
         return img["api"]
@@ -319,7 +327,9 @@ def download_kernelsu_apk(dest_dir: Path) -> Path:
                 continue
             apk_assets.sort(
                 key=lambda a: (
-                    0 if "spoofed" not in a["name"].lower() and "release" in a["name"].lower() else 1,
+                    0
+                    if "spoofed" not in a["name"].lower() and "release" in a["name"].lower()
+                    else 1,
                     0 if "release" in a["name"].lower() else 1,
                     a["name"],
                 )
@@ -418,20 +428,14 @@ def resolve_kernel_source(
     # Check AnyKernel3 zip files in download dir
     if download_dir.is_dir():
         zip_files = sorted(
-            [
-                f
-                for f in download_dir.glob("*.zip")
-                if "KernelSU" in f.name or "Bypass" in f.name
-            ],
+            [f for f in download_dir.glob("*.zip") if "KernelSU" in f.name or "Bypass" in f.name],
             reverse=True,
         )
         for zpath in zip_files:
             try:
                 with zipfile.ZipFile(zpath, "r") as zf:
                     if "Image" in zf.namelist():
-                        tmp_extract = (
-                            Path("/tmp") / f"ksu_extract_{zpath.stem}_{int(time.time())}"
-                        )
+                        tmp_extract = Path("/tmp") / f"ksu_extract_{zpath.stem}_{int(time.time())}"
                         tmp_extract.mkdir(parents=True, exist_ok=True)
                         zf.extract("Image", path=tmp_extract)
                         return tmp_extract / "Image", tmp_extract
@@ -452,6 +456,7 @@ def resolve_kernel_source(
         zf.extract("Image", path=tmp_extract)
     return tmp_extract / "Image", tmp_extract
 
+
 def patch_kernel(
     target_dir: Path, download_dir: Path, explicit_source: Path | None = None
 ) -> PatchResult:
@@ -468,9 +473,7 @@ def patch_kernel(
     backup = target_dir / "kernel-ranchu.orig"
     tmp_clean: Path | None = None
     try:
-        src_image, tmp_clean = resolve_kernel_source(
-            download_dir, explicit_source, target_dir
-        )
+        src_image, tmp_clean = resolve_kernel_source(download_dir, explicit_source, target_dir)
         if not backup.exists():
             shutil.copy2(dest, backup)
 
@@ -564,9 +567,7 @@ def get_first_device_serial(adb_bin: str) -> str | None:
     return None
 
 
-def wait_boot(
-    adb_bin: str, serial: str | None = None, timeout: float = 180.0
-) -> WaitBootResult:
+def wait_boot(adb_bin: str, serial: str | None = None, timeout: float = 180.0) -> WaitBootResult:
     start_time = time.time()
     # Wait for adb device
     wait_cmd = [adb_bin]
@@ -621,11 +622,7 @@ def find_kernelsu_apk(download_dir: Path) -> Path | None:
     if not download_dir.is_dir():
         return None
     apks = sorted(
-        [
-            f
-            for f in download_dir.glob("*.apk")
-            if "KernelSU" in f.name or f.name == "KernelSU.apk"
-        ],
+        [f for f in download_dir.glob("*.apk") if "KernelSU" in f.name or f.name == "KernelSU.apk"],
         reverse=True,
     )
     return apks[0] if apks else None
@@ -638,9 +635,7 @@ def ensure_kernelsu_apk(download_dir: Path) -> Path:
     return download_kernelsu_apk(download_dir)
 
 
-def install_apk(
-    adb_bin: str, apk_path: Path, serial: str | None = None
-) -> InstallApkResult:
+def install_apk(adb_bin: str, apk_path: Path, serial: str | None = None) -> InstallApkResult:
     cmd = [adb_bin]
     if serial:
         cmd.extend(["-s", serial])
@@ -741,7 +736,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="System image package id (e.g. system-images;android-36;google_apis_playstore;arm64-v8a)",
     )
     p_create.add_argument("--device", default=DEFAULT_DEVICE, help="Hardware device definition")
-    p_create.add_argument("--force", action="store_true", default=True, help="Overwrite existing AVD")
+    p_create.add_argument(
+        "--force", action="store_true", default=True, help="Overwrite existing AVD"
+    )
 
     # patch-kernel
     p_patch = subparsers.add_parser(
@@ -761,21 +758,15 @@ def build_parser() -> argparse.ArgumentParser:
     # cold-boot
     p_boot = subparsers.add_parser("cold-boot", help="Cold boot the emulator")
     p_boot.add_argument("--avd", default=DEFAULT_AVD_NAME, help="AVD name to boot")
-    p_boot.add_argument(
-        "--headless", action="store_true", help="Run without UI window or audio"
-    )
+    p_boot.add_argument("--headless", action="store_true", help="Run without UI window or audio")
 
     # wait-boot
     p_wait = subparsers.add_parser("wait-boot", help="Wait for emulator boot completion")
     p_wait.add_argument("--serial", help="Device serial (e.g. emulator-5554)")
-    p_wait.add_argument(
-        "--timeout", type=float, default=180.0, help="Boot timeout in seconds"
-    )
+    p_wait.add_argument("--timeout", type=float, default=180.0, help="Boot timeout in seconds")
 
     # install-apk
-    p_apk = subparsers.add_parser(
-        "install-apk", help="Install KernelSU Manager APK to emulator"
-    )
+    p_apk = subparsers.add_parser("install-apk", help="Install KernelSU Manager APK to emulator")
     p_apk.add_argument("--apk", type=Path, help="Explicit APK path (auto-detected if omitted)")
     p_apk.add_argument("--serial", help="Device serial")
 
@@ -789,12 +780,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_all.add_argument("--avd", default=DEFAULT_AVD_NAME, help="AVD name")
     p_all.add_argument("--device", default=DEFAULT_DEVICE, help="Device definition")
-    p_all.add_argument(
-        "--headless", action="store_true", help="Run emulator headless"
-    )
-    p_all.add_argument(
-        "--timeout", type=float, default=180.0, help="Wait boot timeout in seconds"
-    )
+    p_all.add_argument("--headless", action="store_true", help="Run emulator headless")
+    p_all.add_argument("--timeout", type=float, default=180.0, help="Wait boot timeout in seconds")
 
     return parser
 
@@ -888,14 +875,10 @@ def main(argv: list[str] | None = None) -> int:
         pkg = args.system_image
         if not pkg:
             # Pick modern default
-            arch = (
-                "arm64-v8a"
-                if platform.machine() in {"arm64", "aarch64"}
-                else "x86_64"
-            )
+            arch = "arm64-v8a" if platform.machine() in {"arm64", "aarch64"} else "x86_64"
             # Find an installed image first
             def_path = get_default_system_image_path(sdk_root)
-            if def_path:
+            if def_path and sdk_root:
                 rel = def_path.relative_to(sdk_root / "system-images")
                 parts = rel.parts
                 # rel is e.g. android-36/google_apis_playstore/arm64-v8a
@@ -909,13 +892,13 @@ def main(argv: list[str] | None = None) -> int:
             device=args.device,
             force=args.force,
         )
-        res = {
+        create_res: CreateAvdResult = {
             "avd": args.name,
             "system_image_package": pkg,
             "device": args.device,
             "success": ok,
         }
-        emit_output(res, args.json)
+        emit_output(create_res, args.json)
         return 0 if ok else 1
 
     if sub == "patch-kernel":
@@ -948,14 +931,14 @@ def main(argv: list[str] | None = None) -> int:
             avd_name=args.avd,
             headless=args.headless,
         )
-        res: ColdBootResult = {
+        boot_res: ColdBootResult = {
             "avd": args.avd,
             "pid": proc.pid,
             "status": "started",
             "headless": args.headless,
             "message": f"Emulator process {proc.pid} launched in background",
         }
-        emit_output(res, args.json)
+        emit_output(boot_res, args.json)
         return 0
 
     if sub == "wait-boot":
@@ -975,9 +958,7 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 apk = ensure_kernelsu_apk(download_dir)
             except Exception as exc:
-                emit_output(
-                    {"error": f"Failed to acquire KernelSU APK: {exc}"}, args.json
-                )
+                emit_output({"error": f"Failed to acquire KernelSU APK: {exc}"}, args.json)
                 return 1
         apk_res = install_apk(adb_bin, apk, serial=args.serial)
         emit_output(apk_res, args.json)
@@ -1019,6 +1000,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         # 2. Check if AVD exists, create if not
+        if not sdk_root:
+            emit_output({"error": "Cannot find Android SDK root"}, args.json)
+            return 1
+
         existing_avds = list_avds(emulator_bin)
         avd_name = args.avd
         if avd_name not in existing_avds:
