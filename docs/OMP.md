@@ -231,14 +231,18 @@ for example `~/.omp/profiles/coder/agent/`. Move components by hand:
 | `scripts/<name>.py` | `skills/<skill>/scripts/<name>.py` | A profile has no workspace `scripts/`; update the path in the rule or skill that runs it |
 | `.omp/extensions/<name>.ts` | `extensions/<name>.ts` | Loaded in every session; read it before copying |
 
-The repository's RE profile keeps three skills in `profiles/re/agent/skills/`:
+The repository's RE profile keeps three working skills in `profiles/re/agent/skills/`:
 [malware-analysis](../profiles/re/agent/skills/malware-analysis/SKILL.md),
 [reverse-engineering](../profiles/re/agent/skills/reverse-engineering/SKILL.md),
 and
 [static-artifact-analysis](../profiles/re/agent/skills/static-artifact-analysis/SKILL.md).
-It is a leaf analyst: it does not define subagents. Standing constraints are in
-`profiles/re/agent/RULES.md`; on-demand rules are in `profiles/re/agent/rules/`.
-Each directory matches its YAML `name`; load it with `skill://<name>`.
+[tool-setup](../profiles/re/agent/skills/tool-setup/SKILL.md) is a real skill in that directory, not a placeholder and not part of the family list: it detects the host and installs only its allowlist when the parent asks, and it does not install IDA.
+Eleven family skills (`il2cpp`, `dotnet`, `jvm`, `javascript`, `android`, `apple`,
+`ios`, `desktop`, `obfuscation`, `browser-extension`, `tools`) and three agents (`format-inventory`, `metadata-extract`,
+`evidence-check`) are placeholders and inactive. `jshook` is search-only. Standing
+constraints are in `profiles/re/agent/RULES.md`; on-demand rules are in
+`profiles/re/agent/rules/`. Each directory matches its YAML `name`; load it with
+`skill://<name>`.
 
 ```bash
 E=$HARNESS2_RUNS_DIR/jb/library/jb/k1-omp/agg/statisticians/harnesses/statisticians__task1

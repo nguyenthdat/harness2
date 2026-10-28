@@ -229,13 +229,17 @@ ví dụ `~/.omp/profiles/coder/agent/`. Chuyển từng thành phần bằng ta
 | `scripts/<name>.py` | `skills/<skill>/scripts/<name>.py` | Profile không có `scripts/` theo workspace; sửa đường dẫn trong rule hoặc skill gọi nó |
 | `.omp/extensions/<name>.ts` | `extensions/<name>.ts` | Được nạp ở mọi phiên; đọc kỹ trước khi chép |
 
-RE profile của repository giữ ba skill trong `profiles/re/agent/skills/`:
+RE profile của repository vẫn giữ ba skill đang dùng trong `profiles/re/agent/skills/`:
 [malware-analysis](../profiles/re/agent/skills/malware-analysis/SKILL.md),
 [reverse-engineering](../profiles/re/agent/skills/reverse-engineering/SKILL.md) và
 [static-artifact-analysis](../profiles/re/agent/skills/static-artifact-analysis/SKILL.md).
-Profile này là analyst lá: không định nghĩa subagent. Ràng buộc luôn áp dụng nằm ở
-`profiles/re/agent/RULES.md`; rule đọc khi cần nằm ở `profiles/re/agent/rules/`.
-Tên thư mục trùng với trường YAML `name`; đọc skill qua `skill://<name>`.
+[tool-setup](../profiles/re/agent/skills/tool-setup/SKILL.md) là skill thật trong thư mục đó, không phải placeholder và không thuộc danh sách họ: nó nhận diện máy và chỉ cài allowlist khi được yêu cầu, và không cài IDA.
+Mười một skill theo họ (`il2cpp`, `dotnet`, `jvm`, `javascript`, `android`, `apple`,
+`ios`, `desktop`, `obfuscation`, `browser-extension`, `tools`) và ba agent (`format-inventory`, `metadata-extract`,
+`evidence-check`) là placeholder và không hoạt động. `jshook` chỉ ở chế độ search.
+Ràng buộc luôn áp dụng nằm ở `profiles/re/agent/RULES.md`; rule đọc khi cần nằm ở
+`profiles/re/agent/rules/`. Tên thư mục trùng với trường YAML `name`; đọc skill qua
+`skill://<name>`.
 
 ```bash
 E=$HARNESS2_RUNS_DIR/jb/library/jb/k1-omp/agg/statisticians/harnesses/statisticians__task1

@@ -14,7 +14,7 @@
     },
     "rea": {
       "type": "stdio",
-      "command": "bunx",
+      "command": "npx",
       "args": ["rea-agents@6.4.0", "mcp"],
       "env": {
         "GHIDRA_INSTALL_DIR": "${GHIDRA_INSTALL_DIR}",
@@ -22,6 +22,12 @@
         "REA_ANALYSIS_PROVIDER": "ghidra",
         "REA_JADX_MCP_JAR": "${REA_JADX_MCP_JAR}"
       }
+    },
+    "jshook": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@jshookmcp/jshook@0.3.5"],
+      "env": { "MCP_TOOL_PROFILE": "search", "npm_config_omit": "optional" }
     }
   }
 }

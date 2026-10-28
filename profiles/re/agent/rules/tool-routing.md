@@ -17,3 +17,4 @@ A schema JSON plus `evidence.md`, with `tools.json` naming `file`, `strings`, an
 6. On an ELF schema task, run this profile's `skills/static-artifact-analysis/scripts/elf_triage.py`. If the workspace has `.omp/skills/static-artifact-analysis/scripts/`, use that copy so it matches `check_deliverables.py`. The script only reads bytes.
 7. On a failed REA or IDA call, change the reported argument or classify the timeout using `skill://reverse-engineering` and its recovery note. Do not run setup, doctor, or an installer. One fallback, then record the gap.
 8. Do not use a source-code knowledge graph for a binary. Strings and names are not a call graph.
+9. `jshook` with `MCP_TOOL_PROFILE=search` may look up public format documentation. It must not fetch the sample, a writeup, a ground truth, or anything during a schema-JSON task.
