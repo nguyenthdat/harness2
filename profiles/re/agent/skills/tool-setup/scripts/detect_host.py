@@ -147,6 +147,7 @@ class IosSupported(TypedDict):
     supported: bool
     simctl: bool
     vphone_present: bool
+    vphone_preflight_passed: bool
     rooted_vm_supported: bool
     rooted_vm_solution: str
 
@@ -367,14 +368,18 @@ def simctl_available() -> bool:
 def ios_report(os_name: str) -> IosSupported | IosUnsupported:
     if os_name != "darwin":
         return {"supported": False, "reason": IOS_UNSUPPORTED}
-    vphone_present = (
-        shutil.which("vphone-cli") is not None or shutil.which("vphone") is not None
-    )
+    vphone_cmd = shutil.which("vphone-cli") or shutil.which("vphone")
+    vphone_present = vphone_cmd is not None
+    vphone_preflight_passed = False
+    if vphone_present and vphone_cmd is not None:
+        res = run_cmd([vphone_cmd, "host", "preflight"], timeout=5.0)
+        vphone_preflight_passed = res is not None and res.returncode == 0
     rooted_vm_supported = platform.machine() in ("arm64", "aarch64")
     return {
         "supported": True,
         "simctl": simctl_available(),
         "vphone_present": vphone_present,
+        "vphone_preflight_passed": vphone_preflight_passed,
         "rooted_vm_supported": rooted_vm_supported,
         "rooted_vm_solution": "https://github.com/Lakr233/vphone-cli",
     }

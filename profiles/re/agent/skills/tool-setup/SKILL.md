@@ -48,6 +48,7 @@ Read the single JSON object on stdout.
   `iOS tooling runs on macOS only`.
 - `ios.simctl` indicates availability of Xcode `simctl`.
 - `ios.vphone_present` indicates presence of `vphone` or `vphone-cli`.
+- `ios.vphone_preflight_passed` indicates whether `vphone-cli host preflight` succeeded (virtualization host prerequisites and escalator authorization are satisfied).
 - `ios.rooted_vm_supported` indicates whether the host architecture supports
   rooted Apple Silicon virtual machines (`arm64`/`aarch64`).
 - `ios.rooted_vm_solution` points to `https://github.com/Lakr233/vphone-cli`.
@@ -192,6 +193,8 @@ Frida server injection, tweaking system daemons, SSL unpinning):
   sudo VPhoneEscalator allow /path/to/vphone-cli/build/vphone-vm
   ```
   This grants Virtualization.framework entitlements without requiring global SIP disabling.
+- **Host Preflight (`vphone_preflight_passed`)**:
+  Verify readiness by running `vphone-cli host preflight`. When preflight passes (`vphone-vm can launch`), the host is ready to create and boot the virtual iPhone using `vphone-cli vm create`.
 
 ### Firmware Sources (`blacktop/ipsw` & `ipsw.me`)
 Acquiring official Apple IPSW firmware files for research VM bootstrapping or kernel/dyld analysis:
