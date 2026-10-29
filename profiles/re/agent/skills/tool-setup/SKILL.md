@@ -293,7 +293,23 @@ Supported subcommands:
 All subcommands support `--json` for structured automation.
 ---
 
-## 7. Never
+## 7. Troubleshooting & Setup Bug Reference
+
+When emulator or rooted-VM setup fails, match the reported symptom before
+retrying privileged steps. Common failure modes include macOS AMFI rejecting
+`vphone-vm`, `cfw install` lacking host-mount privileges or restore artifacts,
+APFS cleanup remaining busy, the upstream `vphoned` read-only completion-marker
+bug that removes Irisin executables during rollback, Pyright result-type
+shadowing, and workstation-specific cache paths.
+
+Read
+[`references/vm-root-troubleshooting.md`](references/vm-root-troubleshooting.md)
+for the exact symptoms, technical root causes, and verified fixes for all seven
+Android/iOS setup bugs.
+
+---
+
+## 8. Never
 
 - Do not launch an untrusted malware sample outside isolated sandbox conditions.
 - Do not rewrite `mcp.json` or run `rea setup` or `rea doctor`.
