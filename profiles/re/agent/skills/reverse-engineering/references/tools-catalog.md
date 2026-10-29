@@ -1,117 +1,62 @@
-# Reverse Engineering Tools Catalog & Routing
+# Reverse Engineering Tools Catalog & Capability Index
 
-A comprehensive catalog and decision guide for reverse engineering tools, frameworks, and command-line interfaces across static and dynamic analysis workflows.
+## Title & Overview
+- **Domain**: Comprehensive tooling index, capabilities, command invocations, and selection matrix for reverse engineering across static, dynamic, and specialized targets.
+- **Scope**: IDA Pro, Ghidra/REA, radare2, Binary Ninja, managed decompilers (jadx, ilspycmd), binary diffing engines, and dynamic instrumentation frameworks.
+
+---
 
 ## Tool Selection Matrix
 
-| Artifact / Target | Primary Tool | Secondary / Fallback | MCP Tool / Route |
+| Artifact / Target | Primary Tool | Secondary / Fallback | Invocation & Reference Route |
 |---|---|---|---|
-| Native Executable (PE/ELF/Mach-O) | IDA Pro (official Hex-Rays MCP) | Ghidra (`rea`), radare2, Binary Ninja | IDA MCP for decompilation; `open_binary` in `rea` |
-| Managed .NET Assembly | `ilspycmd` / `dnSpy` | `de4dot`, Ghidra | `inspect_managed_artifact` in `rea` |
-| Android DEX / APK / AAB | `jadx` | `apktool`, Smali | `inspect_android_package`, `inspect_apk_signature` |
-| iOS Mach-O / IPA | IDA Pro, `class-dump` | `ipsw`, Ghidra | `open_bundle_resources`, `open_binary` |
-| WebAssembly (WASM) | `wasm2wat` (WABT) | Ghidra WASM plugin | `inspect_wasm_artifact` |
-| JavaScript / Electron / ASAR | `analyze_javascript_application` | `asar` CLI, Babel AST parser | `analyze_javascript_application`, `inspect_electron_fuses` |
-| Unity IL2CPP | `inspect_il2cpp_metadata` (REA) | Il2CppDumper + IDA/Ghidra | `inspect_il2cpp_metadata`, `open_binary` |
-| Firmware Image / Flash Dump | `binwalk`, `unblob` | QEMU, Ghidra | `inspect_firmware_regions`, `extract_firmware` |
-| Network Captures (PCAP/PCAPNG) | `tshark` (Wireshark CLI) | `mitmproxy` (HTTP/WS) | `inspect_packet_capture`, `inspect_pcap_capture` |
-| Dynamic Instrumentation | Frida (`frida-tools`) | GDB, LLDB, x64dbg | Dynamic observation; VM/emulator hook |
+| **Native PE/ELF/Mach-O** | IDA Pro (official Hex-Rays MCP) | Ghidra (`rea`), radare2, Binary Ninja | [01-static-architectures/native-cpp-abi.md](01-static-architectures/native-cpp-abi.md) |
+| **Rust Compiled Binary** | IDA Pro / Ghidra | `rustfilt`, `cargo-depgraph` | [01-static-architectures/native-rust.md](01-static-architectures/native-rust.md) |
+| **Go Compiled Binary** | Ghidra / IDA Pro | `IDAGolangHelper`, `redress` | [01-static-architectures/native-golang.md](01-static-architectures/native-golang.md) |
+| **.NET Assembly / CIL** | `ilspycmd` / `dnSpy` | `de4dot`, Ghidra | [01-static-architectures/managed-dotnet-jvm.md](01-static-architectures/managed-dotnet-jvm.md) |
+| **Java / Android DEX / APK** | `jadx` | `apktool`, Smali | [01-static-architectures/managed-dotnet-jvm.md](01-static-architectures/managed-dotnet-jvm.md) |
+| **Unity IL2CPP Package** | `Il2CppDumper` + IDA/Ghidra | `inspect_il2cpp_metadata` (REA) | [01-static-architectures/unity-il2cpp.md](01-static-architectures/unity-il2cpp.md) |
+| **Apple iOS / macOS Mach-O** | IDA Pro, `class-dump` | `swift-demangle`, Ghidra | [01-static-architectures/mobile-ios.md](01-static-architectures/mobile-ios.md) |
+| **Web JS / Electron / WASM** | `analyze_javascript_application` | `wasm2wat`, Babel AST, `asar` | [01-static-architectures/browser-js-wasm.md](01-static-architectures/browser-js-wasm.md) |
+| **Embedded Firmware / IoT** | `binwalk`, `unblob` | QEMU, Ghidra | [01-static-architectures/firmware-iot.md](01-static-architectures/firmware-iot.md) |
+| **Instruction Debugger** | GDB (pwndbg/gef), LLDB, WinDbg | x64dbg | [02-dynamic-instrumentation/debugger-workflows.md](02-dynamic-instrumentation/debugger-workflows.md) |
+| **Dynamic Instrumentation** | Frida (`frida-tools`) | `frida-trace`, QEMU | [02-dynamic-instrumentation/frida-hooking.md](02-dynamic-instrumentation/frida-hooking.md) |
+| **Process Unpacking / Dump** | `dump_memory.py`, Scylla | `procdump`, PE-sieve | [02-dynamic-instrumentation/unpacking-memory-dump.md](02-dynamic-instrumentation/unpacking-memory-dump.md) |
+| **Network Traffic Proxy** | `mitmproxy` / `mitmdump` | `tshark`, Wireshark | [02-dynamic-instrumentation/network-traffic-proxy.md](02-dynamic-instrumentation/network-traffic-proxy.md) |
+| **Binary Diffing & Patches** | BinDiff | Ghidra BSim, Diaphora | [03-objectives/vuln-research-patch.md](03-objectives/vuln-research-patch.md) |
+| **Protocol Recovery** | `tshark`, `pbtk` | Wireshark, IDA Pro | [03-objectives/protocol-recovery.md](03-objectives/protocol-recovery.md) |
+| **Algorithm / Crypto RE** | `findcrypt`, Python `cryptography` | CyberChef, Ghidra FindCrypt | [03-objectives/algorithm-recovery.md](03-objectives/algorithm-recovery.md) |
+| **Schema JSON & Evidence** | `elf_triage.py`, `check_deliverables.py` | Headless IDA Pro / Ghidra | [03-objectives/static-artifact-contract.md](03-objectives/static-artifact-contract.md) |
 
 ---
 
-## Tool Capabilities & Invocation
+## Tool Capabilities & Invocation Reference
 
-### 1. IDA Pro (Headless & MCP)
-- **Strengths**: Gold standard decompilation for x86, x64, ARM, ARM64, MIPS; FLIRT signature matching; type reconstruction; IDAPython automation.
-- **MCP Usage**:
-  - Headless IDA MCP connects to an IDA service.
-  - Queries procedures, pseudocode, types, cross-references (`xrefs`), and structural layouts.
-  - Do not pass `.idb` or `.i64` as input when `open_binary` is used. Close databases on task completion.
+### 1. Hex-Rays IDA Pro (Headless MCP)
+- **Use Case**: Primary decompilation for x86, x64, ARM, ARM64, MIPS; FLIRT signatures; struct recovery.
+- **Workflow**: Connect via MCP, open binary, decompile target functions, close database upon completion.
+- **Rule**: Do not pass `.idb` or `.i64` as input; pass target binary path.
 
-### 2. Ghidra / REA (`rea-agents`)
-- **Strengths**: Multi-architecture support, extensive format parsing (PE, ELF, Mach-O, COFF, Raw Binary), built-in headless analysis, target-free format inspectors.
-- **REA MCP Tools**:
-  - `open_binary` / `close_binary`: Native binary lifecycle.
-  - `inspect_pe_imports`, `inspect_pe_load_config`, `inspect_pe_certificates`, `inspect_pe_resources`: Windows PE introspection.
-  - `inspect_elf_notes`, `inspect_binary_layout`: Linux ELF triage.
-  - `inspect_go_binary`, `inspect_rust_binary`: Embedded compiler and dependency extraction.
-  - `inspect_il2cpp_metadata`: Unity metadata parser for `global-metadata.dat`.
-- **CLI Fallback**:
-  ```bash
-  rea analyze-javascript-application /path/to/app --json
-  rea inspect-evidence-bundle /path/to/bundle.json --detail summary
-  ```
+### 2. Ghidra & REA Tools (`rea-agents`)
+- **Use Case**: Multi-architecture decompilation, target-free format inspection, embedded format extraction.
+- **MCP Tools**: `open_binary`, `inspect_pe_imports`, `inspect_elf_notes`, `inspect_go_binary`, `inspect_rust_binary`, `inspect_il2cpp_metadata`.
+- **CLI Tools**: `rea analyze-javascript-application <path> --json`.
 
-### 3. radare2 (`r2`) & Cutter
-- **Strengths**: Fast lightweight CLI binary analysis, hex editing, scriptable via r2pipe, headless disassembly and emulation via ESIL (Evaluable Strings Intermediate Language).
-- **CLI Commands**:
-  ```bash
-  # Analyze all symbols, entry points, calls, and display function list
-  r2 -A -qc "afl" target.bin
-  # Disassemble function at main
-  r2 -A -qc "pdf @sym.main" target.bin
-  # Search for strings
-  r2 -qc "iz" target.bin
-  ```
+### 3. JADX (Java / Android Decompiler)
+- **Use Case**: Decompiling Dalvik bytecode (`.dex`), APK, AAB, and JAR files directly to readable Java source.
+- **CLI Command**: `jadx --deobf -d <output_dir> <sample.apk>`
 
-### 4. Binary Ninja
-- **Strengths**: High-performance BNIL (Binary Ninja Intermediate Language) multi-stage lifting (Low Level IL, Medium Level IL, High Level IL), clean API, robust type propagation.
-- **Use Case**: Advanced automated dataflow analysis, decompilation when IDA/Ghidra heuristics produce convoluted expressions.
+### 4. ILSpy / dnSpy (.NET Decompiler)
+- **Use Case**: Decompiling CIL assemblies to C# source code, recovering WinForms/WPF assets, inspecting metadata tokens.
+- **CLI Command**: `ilspycmd -p -o <output_dir> <assembly.dll>`
 
-### 5. JADX
-- **Strengths**: Best-in-class Java decompiler for Android DEX, APK, AAB, and Java `.class`/`.jar` archives.
-- **CLI Invocations**:
-  ```bash
-  # Decompile APK to output directory without saving GUI layout
-  jadx -d /tmp/decompiled_apk sample.apk --no-imports --show-bad-code
-  # Decompile specific class
-  jadx -d /tmp/decompiled_apk -include-pkg com.example.target sample.apk
-  ```
-
-### 6. Apktool
-- **Strengths**: Disassembles DEX into Smali bytecode; decodes binary XML (`AndroidManifest.xml`) and resources (`res/values/strings.xml`).
-- **CLI Invocation**:
-  ```bash
-  apktool d sample.apk -o /tmp/apktool_out --no-src
-  # Disassemble with Smali source
-  apktool d sample.apk -o /tmp/apktool_out
-  ```
-
-### 7. mitmproxy (`mitmdump` / `mitmweb`)
-- **Strengths**: Interception and inspection of HTTP/1.1, HTTP/2, and WebSocket traffic; SSL/TLS decryption via dynamic CA generation.
-- **CLI Usage**:
-  ```bash
-  # Headless traffic dump to file with SSL decryption
-  mitmdump -p 8080 -w traffic.mitm
-  # Filter specific host
-  mitmdump -r traffic.mitm "~u example.com" -s export_script.py
-  ```
-
-### 8. tshark (Wireshark CLI)
-- **Strengths**: Dissects hundreds of protocols from raw PCAP/PCAPNG files; extract fields, streams, and TLS handshake SNIs.
-- **CLI Commands**:
-  ```bash
-  # Extract DNS queries and HTTP hosts
-  tshark -r capture.pcap -Y "dns || http" -T fields -e ip.src -e dns.qry.name -e http.host
-  # Follow TCP stream index 0 in ASCII
-  tshark -r capture.pcap -q -z follow,tcp,ascii,0
-  ```
-
-### 9. Frida
-- **Strengths**: Dynamic binary instrumentation via V8 JavaScript runtime injected into target process on Linux, Windows, macOS, Android, and iOS.
-- **CLI & Script Patterns**:
-  ```bash
-  # Enumerate loaded modules
-  frida -p <PID> -E "Process.enumerateModules()"
-  # Trace specific native symbol
-  frida-trace -p <PID> -i "open*" -i "read*"
-  ```
+### 5. BinDiff & Diaphora (Binary Diffing)
+- **Use Case**: Comparing two binaries to extract patch deltas, identify patched vulnerabilities, and transfer symbol names.
+- **CLI Command**: `bindiff --primary=<unpatched.idb> --secondary=<patched.idb> --output_dir=<out>`
 
 ---
 
-## Operating Boundaries & Rules
-
-1. **Read-Only / Static First**: Always default to static triage using `file`, `strings`, `objdump`, or REA target-free inspectors before opening a full decompiler.
-2. **Never Execute Malware**: Do not launch suspicious executables, trigger installation, or connect to extracted C2 endpoints.
-3. **No Unapproved Tool Installation**: Use tools already provisioned or available via `skill://tool-setup` allowlist.
-4. **Distinguish Claims**: A tool listing an import or string is an observation, not proof of runtime execution. Always verify reachability.
+## Boundaries & Anti-Patterns
+- **Do not guess tool capabilities**: Consult this catalog before invoking external CLIs.
+- **Do not install duplicate tools**: Check system paths and VM environments before triggering package installations.
+- **Do not open large binaries in interactive GUI tools**: Use headless MCP or CLI options for bounded automated reversing.

@@ -1,13 +1,13 @@
 # Reverse Engineering & Binary Analysis Architecture
 
-Tài liệu kiến trúc tổng thể cho profile Reverse Engineering (`profiles/re`). Mô tả mô hình phân tầng **3-Tier Progressive Disclosure Funnel**, lý do loại bỏ micro-skills, ma trận quyết định tách skill, danh mục tài liệu tham chiếu (`references/`) và kịch bản tự động hóa (`scripts/`).
+Tài liệu kiến trúc tổng thể cho profile Reverse Engineering (`profiles/re`). Mô tả mô hình phân tầng **3-Tier Progressive Disclosure Funnel**, lý do loại bỏ micro-skills (4 nút thắt cổ chai), ma trận quyết định tham chiếu vs skill, danh mục tài liệu tham chiếu phân cấp (`references/`) và kịch bản tự động hóa (`scripts/`).
 
 ---
 
 ## 1. Kiến trúc phân tầng 3-Tier Progressive Disclosure
 
 Thay vì chia nhỏ thành hàng chục micro-skills gây phân mảnh và nhầm lẫn cho LLM router, profile chuẩn hóa thành **2 core skills** duy nhất trong `profiles/re/agent/skills/`:
-1. `reverse-engineering`: Core skill bao quát toàn bộ quy trình dịch ngược mã nhị phân (ELF, PE, Mach-O), managed runtimes (.NET, JVM, Android DEX), mobile (iOS, Android, Flutter, React Native), firmware, WebAssembly, và giao thức mạng.
+1. `reverse-engineering`: Core skill bao quát toàn bộ quy trình dịch ngược mã nhị phân (ELF, PE, Mach-O), managed runtimes (.NET, JVM, Android DEX), mobile (iOS, Android, Unity IL2CPP), firmware, WebAssembly, dynamic instrumentation và các mục tiêu phân tích chuyên sâu.
 2. `tool-setup`: Quản lý phát hiện môi trường, cài đặt công cụ, cấu hình máy ảo, hypervisor và emulator.
 
 Quy trình phân tích tuân thủ phễu 3 tầng:
@@ -15,35 +15,40 @@ Quy trình phân tích tuân thủ phễu 3 tầng:
 ```text
 ┌──────────────────────────────────────────────────────────────────┐
 │ Tier 1: Core Entrypoint (reverse-engineering/SKILL.md)           │
-│ - Quy tắc cốt lõi, ràng buộc RULES.md, định tuyến công cụ        │
-│ - Dung lượng gọn nhẹ (~1.5k tokens ban đầu)                      │
+│ - Phương pháp luận cốt lõi, nguyên tắc kiểm chứng giả thuyết     │
+│ - Bảng định tuyến tham chiếu 3 nhánh (Static, Dynamic, Objective)│
+│ - Dung lượng gọn nhẹ (~1.5k tokens)                              │
 └─────────────────────────────────┬────────────────────────────────┘
                                   │
                                   ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ Tier 2: Mandatory Pre-Triage (Nhận diện Định dạng & Trình biên)  │
-│ - Kiểm tra magic bytes, container, compiler signatures           │
-│ - Xác định: Go, Rust, C++, .NET, DEX, Unity, Flutter, Hermes...  │
+│ Tier 2: Mandatory Pre-Triage (scripts/auto_triage.py)            │
+│ - Quét header, magic bytes, container, compiler signatures       │
+│ - Nhận diện tự động: Go, Rust, C++, .NET, JVM, Unity, WASM, PCAP │
 └─────────────────────────────────┬────────────────────────────────┘
                                   │
                                   ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ Tier 3: Selective Progressive Disclosure (references/<domain>.md)│
+│ Tier 3: Selective Progressive Disclosure (references/<cat>/<ref>)│
 │ - Tải ĐÚNG MỘT file tham chiếu kỹ thuật chuyên sâu theo domain   │
-│ - Chứa ABI, struct layout, vtable, tokens, opcodes, CLI commands │
+│ - 01-static-architectures/  (C++, Rust, Go, .NET/JVM, Unity...)  │
+│ - 02-dynamic-instrumentation/ (Debuggers, Frida, Unpack, Proxy)  │
+│ - 03-objectives/ (Diffing, Protocols, Crypto/Algo, Contracts)    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Vì sao Micro-Skills thất bại trong Reverse Engineering
+## 2. Vì sao Micro-Skills thất bại trong Reverse Engineering (4 Bottlenecks)
 
-Việc duy trì 18-20 micro-skills riêng lẻ (như `go-reverse`, `rust-reverse`, `ios-reverse`, `flutter-reverse`...) dẫn đến 4 vấn đề nghiêm trọng:
+Việc duy trì 18–20 micro-skills riêng lẻ dẫn đến 4 vấn đề nghiêm trọng:
 
 ### 1. Pre-Triage Blindness (Mù định dạng trước phân tích)
 Người dùng hoặc hệ thống giao việc thường chỉ cung cấp một đường dẫn tệp nhị phân (`/tmp/sample.bin`, file ELF đã strip symbol, hoặc buffer không rõ nguồn gốc). Agent không thể biết trước tệp đó được viết bằng Go hay Rust để kích hoạt `go-reverse` hay `rust-reverse`. Việc định tuyến skill trước khi đọc byte vi phạm nguyên lý cơ bản của kỹ thuật đảo ngược: **phải đọc byte để xác định định dạng**.
+
+### 2. Polyglot Targets (Ứng dụng đa ngôn ngữ & đa tầng runtime)
 Các ứng dụng thực tế hiện đại không bao giờ chỉ gồm một ngôn ngữ duy nhất:
-- **Android APK**: Chứa giao diện Java/Kotlin (DEX), kết nối qua JNI tới thư viện native C++ (`libnative.so`), bên trong có thể nhúng module Rust hoặc engine Flutter/React Native.
+- **Android APK**: Chứa giao diện Java/Kotlin (DEX), kết nối qua JNI tới thư viện native C++ (`libnative.so`), bên trong có thể nhúng module Rust hoặc engine Unity/Flutter.
 - **Unity Game**: Giao diện C# biên dịch qua IL2CPP thành mã máy native C++ (`libil2cpp.so`/`GameAssembly.dll`) kết hợp file siêu dữ liệu `global-metadata.dat`.
 - **Electron Desktop**: Bao gồm tiến trình Node.js (JavaScript), Chromium renderer, và các C++ native addons (`.node`).
 Việc chia micro-skills buộc agent phải liên tục chuyển đổi ngữ cảnh, gây mất dấu vết phân tích và làm tràn context window.
@@ -54,10 +59,10 @@ Mọi tác vụ reverse engineering đều chia sẻ cùng một phương pháp 
 - Phân tích luồng điều khiển (CFG) và cấu trúc hàm.
 - Truy vết tham chiếu chéo (`xrefs`) từ chuỗi ký tự và hằng số tới mã sử dụng.
 - Phân biệt giữa quan sát thực tế (observation) và suy đoán (hypothesis).
-Tách thành 18 skill khiến các nguyên tắc này bị sao chép lặp lại 18 lần, gây khó khăn cho việc duy trì nhất quán.
+Tách thành nhiều skill khiến các nguyên tắc này bị sao chép lặp lại nhiều lần, gây khó khăn cho việc duy trì nhất quán.
 
 ### 4. Router Confusion (Xung đột và loãng context của LLM Router)
-Khi profile chứa hơn 20 skill, mô tả của các skill cạnh tranh nhau trong system prompt của mô hình ngôn ngữ. Router dễ bị đánh lừa bởi từ khóa (ví dụ: thấy chuỗi "iOS" trong mô tả task về Android liền kích hoạt `ios-reverse`), dẫn đến kích hoạt sai skill và lãng phí vòng lặp giải quyết.
+Khi profile chứa quá nhiều skill, mô tả của các skill cạnh tranh nhau trong system prompt của mô hình ngôn ngữ. Router dễ bị đánh lừa bởi từ khóa (ví dụ: thấy chuỗi "iOS" trong mô tả task về Android liền kích hoạt `ios-reverse`), dẫn đến kích hoạt sai skill và lãng phí vòng lặp giải quyết.
 
 ---
 
@@ -74,8 +79,6 @@ Khi profile chứa hơn 20 skill, mô tả của các skill cạnh tranh nhau tr
 
 ## 4. Quản lý ngữ cảnh và Băng thông phân tích
 
-Theo quy định của `RULES.md`, agent làm việc trong một phiên duy nhất (`Do not spawn subagents, task agents, or parallel workers. Answer the assigned question in this session`).
-
 Khi xử lý các mục tiêu có sản lượng phân tích lớn (Heavy Output Targets):
 1. **Inlined Rust Standard Library**: Hàng trăm hàm monomorphized và panic handlers. Agent ghi nhận chuỗi panic và cắt tỉa (prune) các nhánh cold path, chỉ giữ lại luồng logic chính.
 2. **Bundle JavaScript khổng lồ (>100k dòng)**: Lưu trữ kết quả phân rã trung gian vào tệp tạm thời trong workspace; chỉ trích xuất hàm mục tiêu và Evidence ID vào sổ ghi chép (ledger).
@@ -83,44 +86,42 @@ Khi xử lý các mục tiêu có sản lượng phân tích lớn (Heavy Output
 
 ---
 
-## 5. Danh mục tài liệu tham chiếu chuyên sâu (`references/`)
+## 5. Danh mục tài liệu tham chiếu phân cấp (`references/`)
 
-Tất cả 25 tài liệu tham chiếu kỹ thuật nằm trong `profiles/re/agent/skills/reverse-engineering/references/`:
+Tất cả tài liệu tham chiếu được chuẩn hóa cấu trúc thành các placeholder sẵn sàng mở rộng, chia làm 3 nhóm chuyên đề và 1 danh mục công cụ gốc:
 
-### Hạ tầng cốt lõi & Quy trình phân tích:
-1. `tools-catalog.md`: Ma trận định tuyến và hướng dẫn CLI/MCP cho IDA Pro, Ghidra (`rea`), radare2, Binary Ninja, JADX, Apktool, mitmproxy, tshark, Frida.
-2. `tools-list.json`: Danh mục công cụ và metadata tham chiếu cho hệ thống.
-3. `connection-and-recovery.md`: Phân loại lỗi kết nối MCP, xử lý timeout và khôi phục phiên REA/IDA.
-4. `evidence-workflows.md`: Phân trang dữ liệu chứng cứ lớn, so sánh phiên bản, và đối soát độ tin cậy.
-5. `native-and-artifacts.md`: Quản lý tài nguyên native, định dạng container, bóc tách gói và phục hồi tiến trình Ghidra.
-6. `static-artifact-analysis.md`: Hướng dẫn chi tiết thực hiện hợp đồng schema JSON cộng `evidence.md`, phân tích span giới hạn và chạy script kiểm tra tự động.
-7. `dynamic-analysis.md`: Hướng dẫn quan sát động (GDB, LLDB, WinDbg, Frida, QEMU, proxy) tuân thủ nghiêm ngặt điều kiện kích hoạt của `RULES.md`.
-8. `runtime-observation.md`: Kỹ thuật giám sát runtime bị động, Fiddler/HAR/SAZ và đối soát tĩnh-động.
+### 1. Static Architectures (`references/01-static-architectures/`)
+- `native-cpp-abi.md`: Calling conventions (x64 SysV/MSVC, ARM64), vtable layout, phục hồi RTTI MSVC/Itanium, layout bộ nhớ STL.
+- `native-rust.md`: Con trỏ béo `&str`/`&[T]`, tối ưu niche cho `Option`/`Result`, mẫu `core::panicking`, demangling legacy/v0, và bóc tách metadata `.dep-v0`.
+- `native-golang.md`: ABI thanh ghi Go 1.17+, giải mã cấu trúc `.gopclntab`, mở rộng stack `runtime.morestack`, interface `iface`/`eface`, và type descriptors.
+- `managed-dotnet-jvm.md`: Hợp nhất .NET CLR và JVM/Dalvik: metadata streams (`#~`, `#Strings`), ECMA-335, DEX format, JADX, Smali, ProGuard/R8, P/Invoke & JNI bridges.
+- `unity-il2cpp.md`: Ghép nối binary native (`GameAssembly.dll`/`libil2cpp.so`) với `global-metadata.dat`, Il2CppDumper, struct `Il2CppObject`/`Il2CppClass`.
+- `mobile-ios.md`: Cấu trúc IPA, giải mã Mach-O FairPlay DRM (`LC_ENCRYPTION_INFO`), runtime Objective-C (`objc_msgSend`), Swift 5 ABI, và entitlements.
+- `browser-js-wasm.md`: Chrome/Firefox extensions (Manifest V2/V3), Webpack bundles, bóc tách Electron ASAR, AST deobfuscation qua Babel, và WebAssembly (`wasm2wat`).
+- `firmware-iot.md`: Định dạng firmware (uImage, SquashFS, TRX), công cụ trích xuất (`binwalk`, `unblob`), kiến trúc nhúng (MIPS delay slots, ARM Thumb mode, RISC-V), và tính địa chỉ nạp base address.
 
-### Ngôn ngữ & Nền tảng chuyên biệt:
-9. `native-cpp-abi.md`: Calling conventions (x64 SysV/MSVC, ARM64), vtable layout, phục hồi RTTI MSVC/Itanium, layout bộ nhớ STL.
-10. `native-rust.md`: Con trỏ béo `&str`/`&[T]`, tối ưu niche cho `Option`/`Result`, mẫu `core::panicking`, demangling legacy/v0, và bóc tách metadata `.dep-v0`.
-11. `native-golang.md`: ABI thanh ghi Go 1.17+, giải mã cấu trúc `.gopclntab`, mở rộng stack `runtime.morestack`, interface `iface`/`eface`, và type descriptors.
-12. `managed-dotnet.md`: Cấu trúc CLR PE, metadata streams (`#~`, `#Strings`), token metadata, ilspycmd, ReadyToRun và NativeAOT.
-13. `managed-jvm-dex.md`: Định dạng `.class`, `.dex`, Multidex, JADX, Smali syntax, ranh giới làm rối ProGuard/R8, và cầu nối native JNI (`RegisterNatives`).
-14. `android-applications.md`: Phân tích tĩnh cấu trúc APK/AAB, thành phần ứng dụng, phân quyền và chứng thư số.
-15. `browser-js-wasm.md`: Chrome/Firefox extensions (Manifest V2/V3), Webpack bundles, bóc tách Electron ASAR, AST deobfuscation qua Babel, và WebAssembly (`wasm2wat`).
-16. `javascript-applications.md`: Quy trình phân tích module graph, bóc tách ứng dụng Electron và truy vết tính năng JavaScript.
-17. `unity-il2cpp.md`: Ghép nối binary native (`GameAssembly.dll`/`libil2cpp.so`) với `global-metadata.dat`, Il2CppDumper, struct `Il2CppObject`/`Il2CppClass`.
-18. `mobile-ios.md`: Cấu trúc IPA, giải mã Mach-O FairPlay DRM (`LC_ENCRYPTION_INFO`), runtime Objective-C (`objc_msgSend`), Swift 5 ABI, và entitlements.
-19. `desktop-apps.md`: Ứng dụng desktop (Electron, Qt C++, WPF .NET, Win32), cơ chế lưu trữ nội bộ (SQLite, LevelDB, Registry), và các kênh IPC.
-20. `firmware-iot.md`: Định dạng firmware (uImage, SquashFS, TRX), công cụ trích xuất (`binwalk`, `unblob`), kiến trúc nhúng (MIPS delay slots, ARM Thumb mode, RISC-V), và tính địa chỉ nạp base address.
-21. `flutter-apps.md`: Kiến trúc Flutter engine (`libflutter.so`), phân tích Dart AOT snapshot (`libapp.so`), cấu trúc phân vùng isolate, và con trỏ tagged pointer.
-22. `react-native-apps.md`: Ứng dụng React Native, giải mã bytecode Hermes (`.hbc`), phân tích Metro bundle (`index.android.bundle`), và cầu nối TurboModules.
-23. `protocols-network.md`: Khung giao thức nhị phân proprietary, giải mã Protobuf wire format không cần file `.proto`, dịch ngược gRPC và phân tích luồng PCAP.
-24. `binary-diffing.md`: Kỹ thuật diff nhị phân (BinDiff, Ghidra BSim), thuật toán so khớp đồ thị hàm, phương pháp luận phân tích bản vá bảo mật (patch analysis).
-25. `deobfuscation-unpacking.md`: Quy trình unpack nhị phân (tìm OEP qua chuyển vùng section và cân bằng stack), giải phẳng luồng điều khiển (CFF), giải mã chuỗi, và devirtualization cho VM bytecode.
+### 2. Dynamic Instrumentation (`references/02-dynamic-instrumentation/`)
+- `debugger-workflows.md`: Hướng dẫn vận hành GDB (pwndbg/gef), LLDB, WinDbg, x64dbg, phần cứng/phần mềm breakpoint, và kiểm soát luồng thực thi trong VM.
+- `frida-hooking.md`: Dynamic Binary Instrumentation bằng Frida, mẫu script hook native C/C++, Java ART, Objective-C/Swift, và logging đối số bị động.
+- `unpacking-memory-dump.md`: Phát hiện Original Entry Point (OEP), kỹ thuật tail jump, trích xuất memory dump qua `dump_memory.py`, và phục hồi Import Address Table (IAT).
+- `network-traffic-proxy.md`: Đánh chặn mạng HTTPS/WebSocket qua `mitmproxy`, cài đặt CA trust store, xuất file `.mitm`/`.pcap`, và phân tích qua `tshark`.
+
+### 3. Objectives & Deliverables (`references/03-objectives/`)
+- `vuln-research-patch.md`: Kỹ thuật diff nhị phân (BinDiff, Ghidra BSim), thuật toán so khớp đồ thị hàm, phương pháp luận phân tích bản vá bảo mật (patch analysis) và chuyển giao symbol.
+- `protocol-recovery.md`: Khung giao thức nhị phân proprietary, giải mã Protobuf wire format không cần file `.proto`, dịch ngược gRPC và phân tích luồng PCAP.
+- `algorithm-recovery.md`: Nhận diện hằng số mật mã (AES, SHA, MD5, CRC32, ChaCha20), phân tích thuật toán mã hóa tùy biến/XOR, trích xuất key/IV và giả lập Python giải mã.
+- `static-artifact-contract.md`: Hướng dẫn chi tiết thực hiện hợp đồng schema JSON cộng `evidence.md`, phân tích span giới hạn và chạy script kiểm tra tự động `check_deliverables.py`.
+
+### 4. Tools Catalog (`references/tools-catalog.md`)
+- `tools-catalog.md`: Ma trận định tuyến và hướng dẫn CLI/MCP cho IDA Pro, Ghidra (`rea`), radare2, Binary Ninja, JADX, Apktool, mitmproxy, tshark, Frida.
 
 ---
 
 ## 6. Danh mục kịch bản tự động hóa (`scripts/`)
 
 Các công cụ Python tiêu chuẩn đi kèm skill `reverse-engineering` trong thư mục `profiles/re/agent/skills/reverse-engineering/scripts/`:
+- `auto_triage.py`: Quét tự động header, magic bytes, section và chuỗi ký tự để nhận diện compiler/runtime và xuất đề xuất reference dạng JSON.
+- `dump_memory.py`: Công cụ trích xuất bộ nhớ tiến trình an toàn trên Linux (`/proc/<pid>/mem`) và macOS (LLDB core dump) phục vụ unpacking và phân tích heap.
 - `elf_triage.py`: Phân tích nhanh ELF header, segment LOAD deltas, section offset mapping, và giải mã XOR lặp.
 - `elf_symbols.py`: Liệt kê symbol và cô lập span địa chỉ của hàm application code phục vụ disassembly có giới hạn.
 - `check_deliverables.py`: Kiểm tra tự động tính hợp lệ của schema JSON và các trích dẫn bằng chứng trong `evidence.md`.
@@ -158,6 +159,7 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
     - Phương pháp rooting: Thay thế nhân Linux GKI (KernelSU) trên emulator Google Play image chính thức của Android Studio.
     - Cache tài nguyên KernelSU: `~/.cache/android-ksu/` (hoặc biến môi trường `ANDROID_KSU_CACHE_DIR`, tự động tải từ official GitHub releases khi thiếu).
     - Kịch bản tự động hóa: `profiles/re/agent/skills/tool-setup/scripts/setup_android_emulator.py` (hỗ trợ `download`, `create-avd`, `patch-kernel`, `cold-boot`, `wait-boot`, `install-apk`, `verify-root`, `setup-all`)
+
 - **iOS Lab (macOS only)**:
   - Xcode Command Line Tools (`xcrun`, `lldb`).
   - `xcrun simctl`: Điều khiển iOS Simulator chuẩn (boot, install, launch, capture) - unrooted.
@@ -166,10 +168,12 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
   - `blacktop/ipsw` ([ipsw](https://github.com/blacktop/ipsw)): Công cụ dòng lệnh CLI chuyên dụng để tải trực tiếp firmware Apple IPSW, giải nén kernelcache (`ipsw kernel dec`), phân rã dyld shared cache (`ipsw dyld split`), phân tích Mach-O.
   - `https://ipsw.me/`: Cổng tra cứu và tải trực tiếp file IPSW chính thức từ Apple CDN theo từng model thiết bị và phiên bản iOS.
   - `frida`: Hook runtime trên iOS Simulator, rooted research VM (`vphone-cli`), hoặc thiết bị vật lý jailbreak.
+
 - **Hypervisor & VM Snapshot Sandboxing**:
   - **macOS**: UTM.app (`utmctl`) là hypervisor nòng cốt trên Apple Silicon (`arm64`), tận dụng Apple `Virtualization.framework` và QEMU engine cho máy ảo cross-arch. Hỗ trợ vòng đời snapshot máy ảo (`utmctl snapshot`), quản lý phân vùng copy-on-write overlay / internal snapshot định dạng QCOW2 (`qemu-img snapshot`), và kịch bản tự động hóa `profiles/re/agent/skills/tool-setup/scripts/setup_utm.py`.
   - **Linux**: KVM (`/dev/kvm`), `qemu-kvm`. Tối ưu tốc độ ảo hóa native phần cứng.
   - **Windows**: VMware Workstation (`vmrun`) hoặc Hyper-V / WSL2.
+
 - **IDA Pro Remote Debugging (Docker IPC & UTM VM Setup)**:
   - Cung cấp kiến trúc server debug phân tán (`linux_server`, `win64_remote.exe`, `android_server`, `armlinux_server`) tự động phân giải qua `$IDADIR/dbgsrv` hoặc `/Applications/IDA*.app/Contents/MacOS/dbgsrv`.
   - Thiết lập remote debugging qua Docker container với namespace isolation và IPC sharing: `--ipc=host`, `--pid=host`, `--cap-add=SYS_PTRACE`, `--security-opt seccomp=unconfined`, `-p 23946:23946`.
