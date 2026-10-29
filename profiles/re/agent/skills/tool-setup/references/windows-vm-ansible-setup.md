@@ -31,7 +31,7 @@ On the guest Windows VM:
 1. Open PowerShell as **Administrator** (`Run as Administrator`).
 2. Run the bundled script or generate it from host with:
    ```bash
-   uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py winrm-script -o setup_winrm.ps1
+   uv run scripts/setup_windows_vm.py winrm-script -o setup_winrm.ps1
    ```
 3. Transfer and execute in PowerShell on guest:
    ```powershell
@@ -68,9 +68,7 @@ UTM supports two primary network modes:
 ---
 
 ## 4. Managing the Tool Catalog (`windows_tools.json`)
-
-The catalog `profiles/re/agent/skills/tool-setup/ansible/windows_tools.json` organizes tools by category and schema:
-
+The catalog `ansible/windows_tools.json` (or `skill://tool-setup/ansible/windows_tools.json`) organizes tools by category and schema:
 ```json
 {
   "id": "osquery",
@@ -90,34 +88,31 @@ Use `setup_windows_vm.py` to inspect and modify:
 
 ### Summary of Catalog
 ```bash
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py summary
+uv run scripts/setup_windows_vm.py summary
 ```
 
 ### List Tools (Filtered)
 ```bash
 # List all tools
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py list
+uv run scripts/setup_windows_vm.py list
 
 # Filter by category
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py list --category debugging_disassembly
+uv run scripts/setup_windows_vm.py list --category debugging_disassembly
 
 # Filter by tag
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py list --tag forensics
-```
+uv run scripts/setup_windows_vm.py list --tag forensics
 
 ### Toggle Tools
 ```bash
 # Disable heavy tools (e.g. Ghidra if only doing quick triage)
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py disable-tool ghidra
+uv run scripts/setup_windows_vm.py disable-tool ghidra
 
 # Re-enable
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py enable-tool ghidra
-```
+uv run scripts/setup_windows_vm.py enable-tool ghidra
 
 ### Add Custom Tools
 ```bash
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py add-tool \
-  --id xorsearch \
+uv run scripts/setup_windows_vm.py add-tool \
   --name XORSearch \
   --category pe_analysis \
   --description "Search for given pattern in XOR/ROL/ROT encoded binary" \
@@ -141,15 +136,15 @@ ansible-galaxy collection install chocolatey.chocolatey ansible.windows communit
 ```
 
 ### 5.1 Generate Inventory
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py generate-inventory \
+```bash
+uv run scripts/setup_windows_vm.py generate-inventory \
   --host 192.168.64.15 \
   --user Administrator \
   --password 'MalwareAnalysisLab2026!' \
   --port 5985
 ```
 
-This writes `profiles/re/agent/skills/tool-setup/ansible/inventory.ini`:
-```ini
+This writes `ansible/inventory.ini` (`skill://tool-setup/ansible/inventory.ini`):
 [windows_vms]
 win-re-vm ansible_host=192.168.64.15 ansible_port=5985 ansible_user=Administrator ansible_password=MalwareAnalysisLab2026!
 
@@ -164,7 +159,7 @@ ansible_winrm_read_timeout_sec=180
 
 ### 5.2 Test Connectivity (`win_ping`)
 ```bash
-ansible windows_vms -i profiles/re/agent/skills/tool-setup/ansible/inventory.ini -m win_ping
+ansible windows_vms -i ansible/inventory.ini -m win_ping
 ```
 Expected output:
 ```json
@@ -177,11 +172,10 @@ win-re-vm | SUCCESS => {
 ### 5.3 Execute Provisioning Playbook
 ```bash
 # Run in check (dry-run) mode:
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py run-playbook --check
+uv run scripts/setup_windows_vm.py run-playbook --check
 
 # Execute full provisioning:
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py run-playbook -v
-```
+uv run scripts/setup_windows_vm.py run-playbook -v
 
 The playbook executes the following stages:
 1. Gathers Windows facts (`ansible_facts['nodename']`, build).
@@ -207,7 +201,7 @@ IDA Pro can debug native Windows 32-bit and 64-bit binaries remotely over TCP.
      - `win32_remote32.exe` (for 32-bit binaries)
    - Verify via `setup_utm.py`:
      ```bash
-     uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py ida-server-info
+     uv run scripts/setup_utm.py ida-server-info
      ```
 2. **Transfer to Guest**:
    - Copy `win64_remote.exe` to `C:\Tools\ida_dbgsrv\` on the Windows VM.
@@ -233,17 +227,16 @@ Always capture clean baseline snapshots before detonating untrusted binaries:
 
 ```bash
 # 1. Check UTM and registered VMs
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py status
+uv run scripts/setup_utm.py status
 
 # 2. Capture a clean post-provisioning snapshot
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py snapshot-create "Windows-RE-Lab" "Clean-Tools-Provisioned"
+uv run scripts/setup_utm.py snapshot-create "Windows-RE-Lab" "Clean-Tools-Provisioned"
 
 # 3. List snapshots to verify
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py snapshot-list "Windows-RE-Lab"
+uv run scripts/setup_utm.py snapshot-list "Windows-RE-Lab"
 
 # 4. Revert to baseline after malware run
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py snapshot-restore "Windows-RE-Lab" "Clean-Tools-Provisioned"
-```
+uv run scripts/setup_utm.py snapshot-restore "Windows-RE-Lab" "Clean-Tools-Provisioned"
 ---
 
 ## 8. Computer Use MCP Server (@zavora-ai/computer-use-mcp)
@@ -282,14 +275,13 @@ The Windows VM acts as the **MCP Server**, and the host machine (macOS / Linux /
 Generate the client configuration snippet using `setup_windows_vm.py`:
 ```bash
 # SSE format (direct network connection to Windows VM)
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py mcp-client-config --host 192.168.64.12
+uv run scripts/setup_windows_vm.py mcp-client-config --host 192.168.64.12
 
 # Stdio wrapper format via mcp-proxy (for Claude Desktop, Cursor, OMP)
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py mcp-client-config --host 192.168.64.12 --format proxy
+uv run scripts/setup_windows_vm.py mcp-client-config --host 192.168.64.12 --format proxy
 
 # SSH tunnel format (when port 4517 is forwarded via SSH tunnel: ssh -L 4517:127.0.0.1:4517 Administrator@192.168.64.12)
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py mcp-client-config --host 192.168.64.12 --format ssh
-```
+uv run scripts/setup_windows_vm.py mcp-client-config --host 192.168.64.12 --format ssh
 
 Generated config snippets for the Host:
 1. **Direct Network / SSE** (`--format sse`):
@@ -358,19 +350,18 @@ Run inside the Windows VM in an elevated Administrator PowerShell prompt:
 From the host controller:
 ```bash
 # Check Defender status on guest VM over WinRM
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action status
+uv run scripts/setup_windows_vm.py defender --action status
 
 # Disable Defender on guest VM over WinRM
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action disable
+uv run scripts/setup_windows_vm.py defender --action disable
 # Re-enable Defender (preserves analysis tool exclusions C:\Tools, C:\Workspace by default)
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action enable
+uv run scripts/setup_windows_vm.py defender --action enable
 
 # Re-enable Defender and clear exclusions for pristine baseline testing
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action enable --clear-exclusions
+uv run scripts/setup_windows_vm.py defender --action enable --clear-exclusions
 
 # Re-enable Defender with custom exclusion paths preserved
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action enable --exclusions "C:\Tools,C:\Samples,C:\Workspace"
+uv run scripts/setup_windows_vm.py defender --action enable --exclusions "C:\Tools,C:\Samples,C:\Workspace"
 
 # Export the standalone PowerShell script to transfer manually
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --script-only -o toggle_defender.ps1
-```
+uv run scripts/setup_windows_vm.py defender --script-only -o toggle_defender.ps1

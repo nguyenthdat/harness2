@@ -196,27 +196,278 @@ Selecting the appropriate network mode depends on whether the sample requires in
 
 ---
 
-## 6. Companion Automation Script (`setup_utm.py`)
+## 6. UTM AppleScript Scripting Cheat Sheet & Automation Reference
 
-The companion automated helper provides high-level subcommands for this workflow:
+While `utmctl` provides convenient command-line wrappers for basic lifecycle and snapshot operations, UTM exposes a rich AppleScript scripting dictionary (`tell application "UTM"`) on macOS. This interface allows advanced virtualization workflows unavailable in `utmctl`, such as:
+- **Disposable execution** without committing disk writes.
+- **Deep snapshot synchronization** (scanning for out-of-band `qemu-img` internal snapshots).
+- **Network sandboxing and host isolation** flags.
+- **Direct guest agent interaction** without network or SSH access (file push, pull, arbitrary command execution with exit code and stdout capture).
+- **Input automation** (keystroke injection, mouse clicks, raw PC AT scancodes).
+- **Automated VM provisioning and cloning**.
+- **USB passthrough management**.
+
+### 1. VM Discovery & Lifecycle (Disposable Execution)
+
+```applescript
+tell application "UTM"
+    -- Resolve VM by name or UUID
+    set vm to virtual machine named "Windows 11 Sandbox"
+    -- set vm to virtual machine id "5D419106-2824-4FED-BFE1-24A7F7E253D8"
+
+    -- Standard execution
+    start vm
+
+    -- DISPOSABLE EXECUTION: runs VM in volatile RAM/overlay mode
+    -- Disk modifications vanish completely when the VM is powered off
+    start vm without saving
+
+    -- Suspend & state persistence
+    suspend vm
+    suspend vm with saving
+
+    -- Shutdown variations
+    stop vm              -- ACPI graceful shutdown
+    stop vm by force     -- Force power off
+    stop vm by kill      -- Kill hypervisor process immediately
+end tell
+```
+
+Executing from shell:
+```bash
+osascript -e 'tell application "UTM" to start (virtual machine named "Windows 11 Sandbox") without saving'
+```
+
+### 2. Snapshot Management & Scan Synchronization
+
+UTM allows listing, creating, restoring, overwriting, and syncing snapshots via AppleScript.
+
+> **Snapshot Compatibility Note**:
+> - **QEMU virtual machines**: Supported across all supported versions of macOS.
+> - **Apple Virtualization (`apple` backend) VMs**: Require **macOS 27 or later** and the VM **must be stopped** for every snapshot operation except `delete snapshot`.
+
+```applescript
+tell application "UTM"
+    set vm to virtual machine named "Windows 11 Sandbox"
+
+    -- Enumerate snapshot names (ordered newest first)
+    set snapNames to name of every snapshot of vm
+
+    -- Create a new snapshot
+    set snap to create snapshot vm named "clean_baseline"
+
+    -- Query snapshot properties: creation date, size, includes running state
+    set snapInfo to {creation date, size, includes running state} of snap
+
+    -- Restore a snapshot
+    set targetSnap to snapshot "clean_baseline" of vm
+    restore targetSnap
+
+    -- Overwrite snapshot with current VM state
+    overwrite targetSnap
+
+    -- Delete snapshot
+    delete snapshot targetSnap
+
+    -- Discard suspended RAM state to force cold boot
+    discard saved state vm
+
+    -- CRITICAL FOR RE: Scan for snapshots created out-of-band by qemu-img
+    scan snapshots vm
+end tell
+```
+
+### 3. Network Sandboxing & Host Isolation
+
+UTM configuration allows setting custom emulated VLAN addressing and isolating the host from guest network requests.
+
+> **Important Boundary — Host Isolation vs. Air-Gapped Containment**:
+> `set isolate from host of nic to true` configures host-level packet filtering on a **Shared Network (NAT)** interface. It blocks the guest VM from reaching services running on the macOS host (e.g. host web servers, ssh, or host LAN devices), but **outbound internet routing remains enabled**.
+> For complete malware containment with zero outbound internet connectivity, use an **Isolated / Host-Only Network** (see Section 5.3) or disconnect all network adapters.
+
+```applescript
+tell application "UTM"
+    set vm to virtual machine named "Windows 11 Sandbox"
+    set config to configuration of vm
+    set nic to item 1 of network interfaces of config
+
+    -- Configure custom emulated VLAN subnet for QEMU VM in shared network mode
+    set vlan guest address of nic to "192.168.100.0/24"
+    set vlan dhcp start address of nic to "192.168.100.10"
+    set vlan dhcp end address of nic to "192.168.100.100"
+
+    -- Prevent guest from accessing the macOS host
+    set isolate from host of nic to true
+
+    -- Save configuration back to VM (VM must be stopped)
+    set item 1 of network interfaces of config to nic
+    update configuration of vm with config
+end tell
+```
+
+For Apple backend virtual machines on macOS 26+:
+```applescript
+tell application "UTM"
+    set vm to virtual machine named "Apple Linux"
+    set config to configuration of vm
+    set mode of item 1 of network interfaces of config to nat network
+    update configuration of vm with config
+end tell
+```
+
+### 4. QEMU Guest Agent: File Transfer & Command Execution (Network-Less)
+
+When the guest OS runs `qemu-ga` (QEMU Guest Agent), UTM can push files, pull files, and execute commands through the virtio-serial channel without requiring guest network connectivity or SSH credentials.
+
+#### Pushing a File from Host to Guest:
+```applescript
+tell application "UTM"
+    set vm to virtual machine named "Windows 11 Sandbox"
+    set hostFile to POSIX file "/path/to/host/sample.exe"
+    push of (open file of vm at "C:\\Users\\User\\Desktop\\sample.exe" for writing) from hostFile
+end tell
+```
+
+#### Pulling a File from Guest to Host:
+```applescript
+tell application "UTM"
+    set vm to virtual machine named "Windows 11 Sandbox"
+    set hostOut to POSIX file "/path/to/host/memory.dmp"
+    pull of (open file of vm at "C:\\Users\\User\\Desktop\\memory.dmp") to hostOut
+end tell
+```
+
+#### Direct Binary / Command Execution inside Guest:
+```applescript
+tell application "UTM"
+    set vm to virtual machine named "Windows 11 Sandbox"
+    tell (execute of vm at "cmd.exe" with arguments {"/c", "whoami"} with output capturing)
+        -- Poll until command completes
+        repeat
+            set res to get result
+            if exited of res then exit repeat
+            delay 0.5
+        end repeat
+        -- Extract exit code and standard output text
+        set guestExitCode to exit code of res
+        set guestOutput to output text of res
+        return guestOutput
+    end tell
+end tell
+```
+
+### 5. Input Automation (Display UI Interaction)
+
+Inject keystrokes, modifier keys, raw PC AT scancodes, or mouse clicks directly into the VM window. Useful when automating dynamic UI prompts (e.g. clicking through UAC dialogs, installer wizards, or typing passwords in pre-boot environments):
+
+```applescript
+tell application "UTM"
+    set vm to virtual machine named "Windows 11 Sandbox"
+
+    -- Send text keystrokes
+    input keystroke of vm text "malware_test"
+
+    -- Send keystrokes with modifiers (shift, control, option, command)
+    input keystroke of vm text "password" with modifiers shift
+
+    -- Send left mouse click at display coordinates (X=350, Y=220)
+    input mouse click of vm at {350, 220} with mouse button left
+
+    -- Send raw PC AT scan codes (make + break pairs, e.g. for enter or special keys)
+    input scan code of vm codes {35, 163, 18, 146}
+end tell
+```
+
+### 6. VM Creation, Duplication & macOS Provisioning
+
+#### Creating a QEMU ARM64 Analysis VM:
+```applescript
+tell application "UTM"
+    set iso to POSIX file "/path/to/installer.iso"
+    set vm to make new virtual machine with properties {backend:qemu, configuration:{name:"RE-Lab-ARM64", architecture:"aarch64", drives:{{removable:true, source:iso}, {guest size:65536}}}}
+end tell
+```
+
+#### Duplicating a VM (Cloning):
+```applescript
+tell application "UTM"
+    set vm to virtual machine named "Base-Win11"
+    duplicate vm with properties {configuration:{name:"Detonation-Target-01", hypervisor:true}}
+end tell
+```
+
+#### macOS Apple Silicon VM with Automated Account Provisioning:
+```applescript
+tell application "UTM"
+    set ipsw to POSIX file "/path/to/UniversalMac_Restore.ipsw"
+    set vm to make new virtual machine with properties {backend:apple, configuration:{name:"macOS-Research", os:macOS, macRecoveryIpsw:ipsw, memory:8192, drives:{{guest size:131072}}}}
+    install vm
+    repeat
+        set p to query install vm
+        if not installing of p then exit repeat
+        delay 10
+    end repeat
+    -- First boot provisioning: sets username, password, auto-login, and SSH remote login
+    start vm provisioning {username:"analyst", password:"analysisPassword123!", automatic login:true, remote login:true}
+end tell
+```
+
+### 7. USB Device Passthrough
+
+Attach or detach USB hardware devices (such as hardware tokens, SDR dongles, or physical debug probes):
+
+```applescript
+tell application "UTM"
+    set targetDevice to first usb device
+    set vm to virtual machine named "Windows 11 Sandbox"
+    connect targetDevice to vm
+    -- To disconnect:
+    disconnect targetDevice
+end tell
+```
+
+---
+
+## 7. Companion Automation Script (`setup_utm.py`)
+
+The companion automated helper wraps both `utmctl`, `qemu-img`, and `osascript` AppleScript automation into a single CLI tool:
 
 ```bash
 # Check host status and list registered VMs
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py status
+uv run scripts/setup_utm.py status
 
 # List VMs as JSON
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py list-vms --json
+uv run scripts/setup_utm.py list-vms --json
+
+# Start VM in disposable mode (AppleScript: changes discarded on shutdown)
+uv run scripts/setup_utm.py start-disposable "Windows VM"
+
+# Run command in guest via QEMU Guest Agent without network/SSH
+uv run scripts/setup_utm.py guest-exec "Windows VM" "cmd.exe" --args "/c" "whoami"
+
+# Push file to guest via QEMU Guest Agent
+uv run scripts/setup_utm.py guest-push "Windows VM" /path/to/sample.exe "C:\\Users\\User\\Desktop\\sample.exe"
+
+# Pull file from guest via QEMU Guest Agent
+uv run scripts/setup_utm.py guest-pull "Windows VM" "C:\\Users\\User\\Desktop\\evidence.log" /tmp/evidence.log
+
+# Send mouse click or keystroke input to VM display
+uv run scripts/setup_utm.py send-input "Windows VM" --click 400 300
+uv run scripts/setup_utm.py send-input "Windows VM" --text "adminPass"
 
 # Manage UTM snapshots
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py snapshot-list "Windows VM"
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py snapshot-create "Windows VM" "clean_base"
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py snapshot-restore "Windows VM" "clean_base"
+uv run scripts/setup_utm.py snapshot-list "Windows VM"
+uv run scripts/setup_utm.py snapshot-create "Windows VM" "clean_base"
+uv run scripts/setup_utm.py snapshot-restore "Windows VM" "clean_base"
 
 # Create differential QCOW2 disks
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py qcow2-create /tmp/overlay.qcow2 20 --backing /path/to/base.qcow2
+uv run scripts/setup_utm.py qcow2-create /tmp/overlay.qcow2 20 --backing /path/to/base.qcow2
 
 # Manage internal QCOW2 snapshots
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py qcow2-snapshot /tmp/disk.qcow2 --create clean
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py qcow2-snapshot /tmp/disk.qcow2 --list
-uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py qcow2-snapshot /tmp/disk.qcow2 --restore clean
+uv run scripts/setup_utm.py qcow2-snapshot /tmp/disk.qcow2 --create clean
+uv run scripts/setup_utm.py qcow2-snapshot /tmp/disk.qcow2 --list
+uv run scripts/setup_utm.py qcow2-snapshot /tmp/disk.qcow2 --restore clean
 ```
+
+Or reference via skill URI:
+`uv run skill://tool-setup/scripts/setup_utm.py <subcommand>`

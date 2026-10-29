@@ -4,10 +4,11 @@
 # dependencies = []
 # ///
 
-"""UTM hypervisor, QCOW2 snapshot, and IDA Pro remote debugging helper.
+"""UTM hypervisor, QCOW2 snapshot, AppleScript automation, and IDA Pro remote debugging helper.
 
-Provides management commands for UTM VMs via utmctl, QCOW2 disks via qemu-img,
-and configuration templates for IDA Pro remote debugging servers.
+Provides management commands for UTM VMs via utmctl and AppleScript (osascript),
+QCOW2 disks via qemu-img, guest agent interaction, and configuration templates
+for IDA Pro remote debugging servers.
 """
 
 from __future__ import annotations
@@ -54,6 +55,12 @@ class ServerBinaryEntry(TypedDict):
     path: str
     executable: bool
 
+class AppleScriptResult(TypedDict):
+    success: bool
+    output: NotRequired[str]
+    error: NotRequired[str]
+    exit_code: NotRequired[int]
+
 
 
 def run_cmd(args: list[str], timeout: int = 30) -> subprocess.CompletedProcess[str] | None:
@@ -71,6 +78,22 @@ def get_utmctl_path() -> str | None:
     if bundled.exists():
         return str(bundled)
     return None
+def run_osascript(script: str, timeout: int = 60) -> subprocess.CompletedProcess[str] | None:
+    return run_cmd(["osascript", "-e", script], timeout=timeout)
+
+
+def escape_applescript_string(s: str) -> str:
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def applescript_vm_target(vm: str) -> str:
+    # Check if VM looks like a UUID (8-4-4-4-12 hex)
+    uuid_pattern = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+    escaped = escape_applescript_string(vm)
+    if uuid_pattern.match(vm.strip()):
+        return f'virtual machine id "{escaped}"'
+    return f'virtual machine named "{escaped}"'
+
 
 
 def get_qemu_img_path() -> str | None:
@@ -562,6 +585,291 @@ def cmd_ida_server_info(json_mode: bool) -> int:
         print("   - Windows x64: win64_remote.exe -p23946")
 
     return 0
+def cmd_start_disposable(vm: str, json_mode: bool) -> int:
+    vm_target = applescript_vm_target(vm)
+    script = f'''tell application "UTM"
+    set target_vm to {vm_target}
+    start target_vm without saving
+end tell'''
+    res = run_osascript(script)
+    if res is None:
+        err = "Failed to run osascript (timed out or execution error)"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return 1
+
+    if res.returncode != 0:
+        err = res.stderr.strip() or f"osascript exited with code {res.returncode}"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return res.returncode
+
+    if json_mode:
+        print(json.dumps({"success": True, "vm": vm, "mode": "disposable", "message": "VM started in disposable mode without saving"}))
+    else:
+        print(f"VM '{vm}' successfully started in disposable mode (changes will not be saved).")
+    return 0
+
+
+def cmd_guest_exec(vm: str, command: str, cmd_args: list[str] | None, timeout: int, json_mode: bool) -> int:
+    vm_target = applescript_vm_target(vm)
+    esc_cmd = escape_applescript_string(command)
+    args_items = [f'"{escape_applescript_string(a)}"' for a in (cmd_args or [])]
+    applescript_args = "{" + ", ".join(args_items) + "}"
+
+    # Script captures execution result via QEMU Guest Agent through UTM AppleScript.
+    # Note: exit code, signal code, output text, and error text can be missing value
+    # (e.g. if stdout/stderr is empty or if process was terminated by signal).
+    # Coerce to text safely in AppleScript to avoid runtime concatenation errors.
+    script = f'''tell application "UTM"
+    set target_vm to {vm_target}
+    tell (execute of target_vm at "{esc_cmd}" with arguments {applescript_args} with output capturing)
+        repeat
+            set res to get result
+            if exited of res then exit repeat
+            delay 0.5
+        end repeat
+        set rawExit to exit code of res
+        set rawSig to signal code of res
+        set rawOut to output text of res
+        set rawErr to error text of res
+
+        set exitStr to ""
+        if rawExit is not missing value then set exitStr to rawExit as text
+        set sigStr to ""
+        if rawSig is not missing value then set sigStr to rawSig as text
+        set outStr to ""
+        if rawOut is not missing value then set outStr to rawOut as text
+        set errStr to ""
+        if rawErr is not missing value then set errStr to rawErr as text
+
+        return exitStr & "<UTM_EXEC_SPLIT>" & sigStr & "<UTM_EXEC_SPLIT>" & errStr & "<UTM_EXEC_SPLIT>" & outStr
+    end tell
+end tell'''
+
+    res = run_osascript(script, timeout=timeout)
+    if res is None:
+        err = f"Guest command execution timed out or failed to invoke osascript (timeout={timeout}s)"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return 1
+
+    if res.returncode != 0:
+        err = res.stderr.strip() or f"osascript exited with code {res.returncode}"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return res.returncode
+
+    # Do not strip full res.stdout to preserve intentional leading/trailing whitespace in command output
+    raw_out = res.stdout
+    parts = raw_out.split("<UTM_EXEC_SPLIT>", 3)
+    if len(parts) == 4:
+        exit_code_str, sig_code_str, error_text, output_text = parts
+    else:
+        exit_code_str, sig_code_str, error_text, output_text = "", "", "", raw_out
+
+    # Strip newline that osascript appends to the final return string
+    if output_text.endswith("\n"):
+        output_text = output_text[:-1]
+
+    guest_exit_code: int | None = int(exit_code_str) if exit_code_str.strip() else None
+    signal_code: int | None = int(sig_code_str) if sig_code_str.strip() else None
+
+    effective_exit = guest_exit_code if guest_exit_code is not None else (128 + signal_code if signal_code is not None else 0)
+
+    if json_mode:
+        print(json.dumps({
+            "success": True,
+            "vm": vm,
+            "command": command,
+            "args": cmd_args or [],
+            "exit_code": guest_exit_code,
+            "signal_code": signal_code,
+            "output": output_text,
+            "error": error_text,
+        }))
+    else:
+        if output_text:
+            sys.stdout.write(output_text + ("\n" if not output_text.endswith("\n") else ""))
+        if error_text:
+            sys.stderr.write(error_text + ("\n" if not error_text.endswith("\n") else ""))
+        if signal_code is not None:
+            print(f"[Guest process terminated by signal/exception {signal_code}]", file=sys.stderr)
+        elif guest_exit_code is not None and guest_exit_code != 0:
+            print(f"[Guest process exited with code {guest_exit_code}]", file=sys.stderr)
+
+    return effective_exit
+
+def cmd_guest_push(vm: str, host_file: str, guest_path: str, json_mode: bool) -> int:
+    host_p = Path(host_file).resolve()
+    if not host_p.exists():
+        err = f"Host file not found: {host_file}"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return 1
+
+    vm_target = applescript_vm_target(vm)
+    esc_host = escape_applescript_string(str(host_p))
+    esc_guest = escape_applescript_string(guest_path)
+
+    script = f'''tell application "UTM"
+    set target_vm to {vm_target}
+    set input_file to POSIX file "{esc_host}"
+    push of (open file of target_vm at "{esc_guest}" for writing) from input_file
+end tell'''
+
+    res = run_osascript(script)
+    if res is None:
+        err = "Failed to push file via osascript (timed out or execution error)"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return 1
+
+    if res.returncode != 0:
+        err = res.stderr.strip() or f"osascript exited with code {res.returncode}"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return res.returncode
+
+    if json_mode:
+        print(json.dumps({
+            "success": True,
+            "vm": vm,
+            "host_file": str(host_p),
+            "guest_path": guest_path,
+            "message": f"Successfully pushed {host_p} to guest path {guest_path}",
+        }))
+    else:
+        print(f"Successfully pushed '{host_p}' to '{vm}:{guest_path}'.")
+    return 0
+
+
+def cmd_guest_pull(vm: str, guest_file: str, host_path: str, json_mode: bool) -> int:
+    host_p = Path(host_path).resolve()
+    # If host path is directory, append guest file basename
+    if host_p.is_dir():
+        host_p = host_p / Path(guest_file).name
+    # Ensure parent directory exists
+    host_p.parent.mkdir(parents=True, exist_ok=True)
+
+    vm_target = applescript_vm_target(vm)
+    esc_host = escape_applescript_string(str(host_p))
+    esc_guest = escape_applescript_string(guest_file)
+
+    script = f'''tell application "UTM"
+    set target_vm to {vm_target}
+    set output_file to POSIX file "{esc_host}"
+    pull of (open file of target_vm at "{esc_guest}") to output_file
+end tell'''
+
+    res = run_osascript(script)
+    if res is None:
+        err = "Failed to pull file via osascript (timed out or execution error)"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return 1
+
+    if res.returncode != 0:
+        err = res.stderr.strip() or f"osascript exited with code {res.returncode}"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return res.returncode
+
+    if json_mode:
+        print(json.dumps({
+            "success": True,
+            "vm": vm,
+            "guest_file": guest_file,
+            "host_path": str(host_p),
+            "message": f"Successfully pulled {guest_file} to {host_p}",
+        }))
+    else:
+        print(f"Successfully pulled '{vm}:{guest_file}' to '{host_p}'.")
+    return 0
+
+
+def cmd_send_input(
+    vm: str,
+    text: str | None,
+    click: list[int] | None,
+    modifiers: str | None,
+    button: str,
+    json_mode: bool,
+) -> int:
+    if not text and not click:
+        err = "Must specify either --text or --click X Y (or both)"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return 1
+
+    vm_target = applescript_vm_target(vm)
+    script_lines = ['tell application "UTM"', f"    set target_vm to {vm_target}"]
+
+    if text:
+        esc_text = escape_applescript_string(text)
+        if modifiers:
+            script_lines.append(f'    input keystroke of target_vm text "{esc_text}" with modifiers {modifiers}')
+        else:
+            script_lines.append(f'    input keystroke of target_vm text "{esc_text}"')
+
+    if click:
+        x, y = click[0], click[1]
+        script_lines.append(f"    input mouse click of target_vm at {{{x}, {y}}} with mouse button {button}")
+
+    script_lines.append("end tell")
+    script = "\n".join(script_lines)
+
+    res = run_osascript(script)
+    if res is None:
+        err = "Failed to send input via osascript (timed out or execution error)"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return 1
+
+    if res.returncode != 0:
+        err = res.stderr.strip() or f"osascript exited with code {res.returncode}"
+        if json_mode:
+            print(json.dumps({"success": False, "error": err}))
+        else:
+            print(f"Error: {err}", file=sys.stderr)
+        return res.returncode
+
+    action_summary: dict[str, object] = {"vm": vm}
+    if text:
+        action_summary["keystroke"] = text
+        if modifiers:
+            action_summary["modifiers"] = modifiers
+    if click:
+        action_summary["click"] = {"x": click[0], "y": click[1], "button": button}
+
+    if json_mode:
+        print(json.dumps({"success": True, **action_summary}))
+    else:
+        print(f"Input successfully sent to VM '{vm}': {action_summary}")
+    return 0
+
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -612,6 +920,37 @@ def main(argv: list[str] | None = None) -> int:
 
     # ida-server-info
     subparsers.add_parser("ida-server-info", parents=[parent_parser], help="Locate IDA dbgsrv and show Docker/UTM configuration templates")
+    # start-disposable <vm>
+    p_disp = subparsers.add_parser("start-disposable", parents=[parent_parser], help="Start VM in disposable mode without saving changes")
+    p_disp.add_argument("vm", help="VM name or UUID")
+
+    # guest-exec <vm> <command> [--args arg1 arg2...]
+    p_gexec = subparsers.add_parser("guest-exec", parents=[parent_parser], help="Run a command inside guest VM via QEMU Guest Agent (AppleScript)")
+    p_gexec.add_argument("vm", help="VM name or UUID")
+    p_gexec.add_argument("command", help="Command or executable path inside guest")
+    p_gexec.add_argument("--args", nargs="*", default=[], help="Command arguments")
+    p_gexec.add_argument("--timeout", type=int, default=60, help="Execution timeout in seconds (default: 60)")
+
+    # guest-push <vm> <host_file> <guest_path>
+    p_gpush = subparsers.add_parser("guest-push", parents=[parent_parser], help="Copy host file to guest via QEMU Guest Agent")
+    p_gpush.add_argument("vm", help="VM name or UUID")
+    p_gpush.add_argument("host_file", help="Path to file on host")
+    p_gpush.add_argument("guest_path", help="Destination path inside guest VM")
+
+    # guest-pull <vm> <guest_file> <host_path>
+    p_gpull = subparsers.add_parser("guest-pull", parents=[parent_parser], help="Copy guest file to host via QEMU Guest Agent")
+    p_gpull.add_argument("vm", help="VM name or UUID")
+    p_gpull.add_argument("guest_file", help="Path to file inside guest VM")
+    p_gpull.add_argument("host_path", help="Destination file or directory on host")
+
+    # send-input <vm> [--text TEXT] [--click X Y]
+    p_sinput = subparsers.add_parser("send-input", parents=[parent_parser], help="Send keystrokes or mouse clicks to VM display via AppleScript")
+    p_sinput.add_argument("vm", help="VM name or UUID")
+    p_sinput.add_argument("--text", help="Text string to type as keystrokes")
+    p_sinput.add_argument("--modifiers", choices=["shift", "control", "option", "command"], help="Optional modifier key")
+    p_sinput.add_argument("--click", nargs=2, type=int, metavar=("X", "Y"), help="Mouse click coordinates (e.g. --click 100 200)")
+    p_sinput.add_argument("--button", choices=["left", "right", "middle"], default="left", help="Mouse button (default: left)")
+
     args = parser.parse_args(argv)
 
 
@@ -638,6 +977,16 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_qcow2_snapshot(args.qcow2_path, "delete", args.delete, args.json)
     elif args.subcommand == "ida-server-info":
         return cmd_ida_server_info(args.json)
+    elif args.subcommand == "start-disposable":
+        return cmd_start_disposable(args.vm, args.json)
+    elif args.subcommand == "guest-exec":
+        return cmd_guest_exec(args.vm, args.command, args.args, args.timeout, args.json)
+    elif args.subcommand == "guest-push":
+        return cmd_guest_push(args.vm, args.host_file, args.guest_path, args.json)
+    elif args.subcommand == "guest-pull":
+        return cmd_guest_pull(args.vm, args.guest_file, args.host_path, args.json)
+    elif args.subcommand == "send-input":
+        return cmd_send_input(args.vm, args.text, args.click, args.modifiers, args.button, args.json)
 
     return 0
 

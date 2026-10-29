@@ -27,9 +27,8 @@ From this skill's directory:
 
 `uv run scripts/detect_host.py`
 
-From the repository root the same program is
-`uv run profiles/re/agent/skills/tool-setup/scripts/detect_host.py`.
-
+Or reference via skill URI:
+`uv run skill://tool-setup/scripts/detect_host.py`.
 Read the single JSON object on stdout.
 
 - `os` is `linux`, `darwin`, or `windows`.
@@ -42,7 +41,10 @@ Read the single JSON object on stdout.
 - `hypervisor.preferred` is `kvm` on Linux, `utm` (or `parallels`) on macOS, and
   `vmware` on Windows. `hypervisor.present` indicates availability of that hypervisor.
   On macOS, `hypervisor.utm_present`, `hypervisor.utmctl_path`, and
-  `hypervisor.qemu_img_present` indicate UTM and QCOW2 tool readiness.
+  `hypervisor.qemu_img_present` indicate UTM and QCOW2 tool readiness. UTM also
+  supports rich macOS AppleScript (`tell application "UTM"`) automation for disposable
+  mode (`start without saving`), network isolation, QEMU Guest Agent execution/file transfer,
+  and input automation.
   `hypervisor.qemu_present` is separate. Do not prefer raw QEMU over the platform
   hypervisor.
 - `android.su` is `null` unless `--probe-android` was passed.
@@ -159,8 +161,7 @@ AOSP / Google APIs images via Android Studio KernelSU GKI rooting methodology.
 ## 4. Automated Emulator Setup Script (`setup_android_emulator.py`)
 
 The companion automated script implements the full workflow cleanly:
-`uv run profiles/re/agent/skills/tool-setup/scripts/setup_android_emulator.py <subcommand>`
-
+`uv run scripts/setup_android_emulator.py <subcommand>` (or `uv run skill://tool-setup/scripts/setup_android_emulator.py <subcommand>`)
 Supported subcommands:
 - `list`: Inspects SDK path, tools, installed system images, AVDs, and KernelSU assets in cache directory (`~/.cache/android-ksu/`).
 - `download [--kernel-version <ver>] [--apk-only] [--kernel-only]`: Automatically downloads the matching KernelSU GKI kernel AnyKernel3 zip from WildKernels and Manager APK from KernelSU-Next GitHub releases.
@@ -282,8 +283,7 @@ Even with system CA installed, applications using Certificate Pinning (OkHttp3 `
 ### Automated Script (`setup_proxy_ca.py`)
 
 The companion automated script implements the full workflow cleanly:
-`uv run profiles/re/agent/skills/tool-setup/scripts/setup_proxy_ca.py <subcommand>`
-
+`uv run scripts/setup_proxy_ca.py <subcommand>` (or `uv run skill://tool-setup/scripts/setup_proxy_ca.py <subcommand>`)
 Supported subcommands:
 - `status`: Checks `~/.mitmproxy/mitmproxy-ca-cert.pem`, computes old subject hash, reports `<hash>.0`.
 - `export-ca [--out-dir <dir>]`: Exports formatted `<hash>.0` cert with subject details.
@@ -302,22 +302,28 @@ On macOS Apple Silicon (`arm64`), UTM provides hardware-accelerated guest virtua
 with near bare-metal performance via Apple's `Virtualization.framework`, alongside QEMU
 emulation for cross-architecture targets.
 
-### VM Control & Snapshots (`utmctl`)
+### VM Control & Snapshots (`utmctl` & AppleScript)
 - List virtual machines: `utmctl list`
 - Inspect status: `utmctl status <vm_uuid_or_name>`
 - Create snapshot: `utmctl snapshot create <vm> --name <name>`
 - Restore snapshot: `utmctl snapshot restore <vm> --snapshot <name>`
 - Query IP: `utmctl ip-address <vm>`
-
+- **Disposable Execution**: `start vm without saving` via AppleScript discards all disk writes upon VM shutdown.
+- **Host Isolation & Sandboxing**: `isolate from host of nic to true` blocks guest access to macOS host on shared NAT; use Host-Only network (Section 5.3) for full air-gapped containment.
+- **Guest Agent & Input Automation**: Network-less file push/pull, command execution (`cmd_guest_exec`), and display input injection (`send-input`).
 ### QCOW2 Disk Architecture & Snapshots (`qemu-img`)
 - **Copy-On-Write Overlays**: Keep master OS base images read-only (`-b base.qcow2 -F qcow2`) and execute dynamic analysis on disposable differential disks.
 - **Internal Snapshots**: Manage ad-hoc checkpoints via `qemu-img snapshot [-c|-a|-d|-l]`.
 - Read [`references/utm-hypervisor-and-snapshots.md`](references/utm-hypervisor-and-snapshots.md) for sandbox lifecycle details, copy-on-write overlays, and networking topologies.
 
 ### Automated Script (`setup_utm.py`)
-Run helper: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py <subcommand>`
-- `status`: Checks UTM.app, `utmctl`, `qemu-img`, and lists registered VMs.
+Run helper: `uv run scripts/setup_utm.py <subcommand>` (or `uv run skill://tool-setup/scripts/setup_utm.py <subcommand>`)
 - `list-vms`: Enumerates registered VMs with UUID and status.
+- `start-disposable <vm>`: Starts VM in disposable mode (`start vm without saving` via AppleScript).
+- `guest-exec <vm> <cmd> [--args ...]`: Executes command inside guest via QEMU Guest Agent without network/SSH.
+- `guest-push <vm> <host_file> <guest_path>`: Copies file from host to guest via QEMU Guest Agent.
+- `guest-pull <vm> <guest_file> <host_path>`: Copies file from guest to host via QEMU Guest Agent.
+- `send-input <vm> [--text TEXT] [--click X Y]`: Injects keystrokes or mouse clicks to VM display.
 - `snapshot-list <vm>`: Lists snapshots for VM.
 - `snapshot-create <vm> <name>`: Creates a snapshot.
 - `snapshot-restore <vm> <name>`: Restores a snapshot.
@@ -336,8 +342,7 @@ from IDA Pro on the host.
 ### Debug Server Binaries (`dbgsrv`)
 IDA Pro bundles standalone debug servers inside its installation directory under `dbgsrv/`.
 Resolve the directory dynamically via `$IDADIR/dbgsrv`, `/Applications/IDA*.app/Contents/MacOS/dbgsrv`,
-or automatically via `uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py ida-server-info`:
-- `linux_server` / `linux_server32`: Linux x86_64 / x86
+or automatically via `uv run scripts/setup_utm.py ida-server-info`:
 - `armlinux_server` / `armlinux_server32`: Linux ARM64 / ARMv7
 - `win64_remote.exe` / `win32_remote32.exe`: Windows x64 / x86
 - `android_server` / `android_x64_server`: Android ARM / x86_64
@@ -360,7 +365,6 @@ docker run --rm -it \
 - **Shared Network (NAT)**: Add Port Forwarding rule in UTM Network Settings (`Host Port 23946` -> `Guest Port 23946`). In IDA Pro, connect to `127.0.0.1:23946`.
 - **Bridged Network**: Obtain guest IP with `utmctl ip-address <vm>`, connect to `<guest_ip>:23946`.
 - **Android Emulator**: Forward port via `adb forward tcp:23946 tcp:23946`, push `android_server` to `/data/local/tmp/`, and run via `adb shell su -c ...`.
-
 Read [`references/ida-remote-debugging.md`](references/ida-remote-debugging.md) for full setup guides, GUI process options, and troubleshooting steps.
 ---
 
@@ -378,8 +382,7 @@ Contains tools across 7 core categories:
 - **`system_utilities`**: `7zip` (7zip.7zip), `git` (Git.Git), `python3` (Python.Python.3.12), `hxd` (MH-Nexus.HxD), `curl` (cURL.cURL), `nodejs` (Node.js LTS)
 - **`automation_agent`**: `computer-use-mcp` (@zavora-ai/computer-use-mcp, native Rust NAPI desktop automation MCP server running on Windows VM on port 4517, controlled by host AI agent as MCP client)
 ### Helper CLI (`setup_windows_vm.py`)
-Run helper: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py <subcommand>`
-- `list [--category <cat>] [--tag <tag>] [--enabled-only] [--json]`: Enumerate tools in catalog.
+Run helper: `uv run scripts/setup_windows_vm.py <subcommand>` (or `uv run skill://tool-setup/scripts/setup_windows_vm.py <subcommand>`)
 - `summary [--json]`: Show high-level tool counts and category breakdown.
 - `enable-tool <id>` / `disable-tool <id>`: Toggle tools in `windows_tools.json`.
 - `add-tool`: Add a new tool to catalog with schema validation.
@@ -391,19 +394,17 @@ Run helper: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm
 ### Computer Use MCP & Windows Defender Automation
 - **Computer Use MCP**: Installed globally via npm (`@zavora-ai/computer-use-mcp`, binary `%APPDATA%\npm\computer-use-mcp.cmd`). Windows VM acts as the **MCP Server** (`computer-use-mcp-console --no-demo --no-open` on port 4517) running inside the interactive desktop session (configured via scheduled task `ComputerUseMcpServer` and managed via `C:\Tools\start_computer_use_server.ps1`). The host machine (macOS/Linux) acts as the **MCP Client** connecting via SSE (`http://<VM_IP>:4517/mcp`), stdio wrapper via `mcp-proxy`, or SSH tunnel. Generate client configuration with `setup_windows_vm.py mcp-client-config --host <VM_IP>`.
 - **Windows Defender Toggle**: Disable Real-Time Monitoring and add `C:\Tools` / `C:\Workspace` exclusions during malware triage using:
-  - Remote via Ansible: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action disable`
+  - Remote via Ansible: `uv run scripts/setup_windows_vm.py defender --action disable`
   - Local on Guest VM: `powershell -ExecutionPolicy Bypass -File C:\Tools\toggle_defender.ps1 -Action disable`
-  - Re-enable while preserving analysis tool exclusions: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action enable` (use `--clear-exclusions` only for pristine baseline testing)
-  - Status verification: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action status`
-
+  - Re-enable while preserving analysis tool exclusions: `uv run scripts/setup_windows_vm.py defender --action enable` (use `--clear-exclusions` only for pristine baseline testing)
+  - Status verification: `uv run scripts/setup_windows_vm.py defender --action status`
 ### Provisioning Workflow
 1. Run `setup_winrm.ps1` in an elevated Administrator PowerShell prompt on the Windows VM.
 2. Generate inventory:
-   `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py generate-inventory --host <VM_IP> --user Administrator --password <PASS>`
-3. Test connection: `ansible windows_vms -i profiles/re/agent/skills/tool-setup/ansible/inventory.ini -m win_ping`
-4. Run playbook: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py run-playbook -v`
+   `uv run scripts/setup_windows_vm.py generate-inventory --host <VM_IP> --user Administrator --password <PASS>`
+3. Test connection: `ansible windows_vms -i ansible/inventory.ini -m win_ping`
+4. Run playbook: `uv run scripts/setup_windows_vm.py run-playbook -v`
 5. Capture snapshot using `setup_utm.py snapshot-create "Win-VM" "Clean-Provisioned"`.
-
 Read [`references/windows-vm-ansible-setup.md`](references/windows-vm-ansible-setup.md) for detailed steps, WinRM troubleshooting, and IDA remote debugging setup.
 ---
 ## 10. Troubleshooting & Setup Bug Reference
