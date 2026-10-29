@@ -1,154 +1,132 @@
-# Kế hoạch chọn skill
+# Reverse Engineering & Binary Analysis Architecture
 
-## Mục đích
+Tài liệu kiến trúc tổng thể cho profile Reverse Engineering (`profiles/re`). Mô tả mô hình phân tầng **3-Tier Progressive Disclosure Funnel**, lý do loại bỏ micro-skills, ma trận quyết định tách skill, danh mục tài liệu tham chiếu (`references/`) và kịch bản tự động hóa (`scripts/`).
 
-Plan này chọn skill nào được viết trong `profiles/re`. Không copy repo upstream vào profile. Không một skill cho mỗi tool.
+---
 
-Đây là chỉ mục cho người đọc. Agent không lấy file này làm quy trình.
+## 1. Kiến trúc phân tầng 3-Tier Progressive Disclosure
 
-Static là mặc định. Dynamic chỉ theo `profiles/re/agent/RULES.md`. Hợp đồng static của một task vẫn thắng plan này.
+Thay vì chia nhỏ thành hàng chục micro-skills gây phân mảnh và nhầm lẫn cho LLM router, profile chuẩn hóa thành **2 core skills** duy nhất trong `profiles/re/agent/skills/`:
+1. `reverse-engineering`: Core skill bao quát toàn bộ quy trình dịch ngược mã nhị phân (ELF, PE, Mach-O), managed runtimes (.NET, JVM, Android DEX), mobile (iOS, Android, Flutter, React Native), firmware, WebAssembly, và giao thức mạng.
+2. `tool-setup`: Quản lý phát hiện môi trường, cài đặt công cụ, cấu hình máy ảo, hypervisor và emulator.
 
-Thân đã viết: `malware-analysis`, `reverse-engineering`, `static-artifact-analysis`.
+Quy trình phân tích tuân thủ phễu 3 tầng:
 
-Placeholder, chưa có thân: `il2cpp`, `dotnet`, `jvm`, `javascript`, `android`, `apple`, `ios`, `desktop`, `obfuscation`, `browser-extension`, `tools`.
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│ Tier 1: Core Entrypoint (reverse-engineering/SKILL.md)           │
+│ - Quy tắc cốt lõi, ràng buộc RULES.md, định tuyến công cụ        │
+│ - Dung lượng gọn nhẹ (~1.5k tokens ban đầu)                      │
+└─────────────────────────────────┬────────────────────────────────┘
+                                  │
+                                  ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ Tier 2: Mandatory Pre-Triage (Nhận diện Định dạng & Trình biên)  │
+│ - Kiểm tra magic bytes, container, compiler signatures           │
+│ - Xác định: Go, Rust, C++, .NET, DEX, Unity, Flutter, Hermes...  │
+└─────────────────────────────────┬────────────────────────────────┘
+                                  │
+                                  ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ Tier 3: Selective Progressive Disclosure (references/<domain>.md)│
+│ - Tải ĐÚNG MỘT file tham chiếu kỹ thuật chuyên sâu theo domain   │
+│ - Chứa ABI, struct layout, vtable, tokens, opcodes, CLI commands │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-## Vì sao hai nguồn này
+---
 
-secskills là danh sách họ phân tích. Hạt nhân reverse ở đó rõ: binary, .NET, iOS, macOS, IL2CPP, JavaScript làm rối, extension, unpack, VM. Phần còn lại của cùng thư mục là audit source, web, AI, vận hành. Profile lấy họ từ danh sách này, không lấy cả repo.
+## 2. Vì sao Micro-Skills thất bại trong Reverse Engineering
 
-reverse-skill là router và lớp tool. Nó rộng sang pentest, CTF, cloud, Active Directory. Profile không lấy độ rộng đó. Lấy đường đi: loại file này thì mở skill nào, tool nào đứng cạnh. `skills/INDEX.md` là mục lục. Trên `main` có 49 thư mục, cộng file INDEX.
+Việc duy trì 18-20 micro-skills riêng lẻ (như `go-reverse`, `rust-reverse`, `ios-reverse`, `flutter-reverse`...) dẫn đến 4 vấn đề nghiêm trọng:
 
-Họ lấy từ secskills. Route tool lấy từ reverse-skill. Chỗ reverse-skill có exploit, repackage, hook, hoặc bypass thì bỏ phần đó khi viết thân.
+### 1. Pre-Triage Blindness (Mù định dạng trước phân tích)
+Người dùng hoặc hệ thống giao việc thường chỉ cung cấp một đường dẫn tệp nhị phân (`/tmp/sample.bin`, file ELF đã strip symbol, hoặc buffer không rõ nguồn gốc). Agent không thể biết trước tệp đó được viết bằng Go hay Rust để kích hoạt `go-reverse` hay `rust-reverse`. Việc định tuyến skill trước khi đọc byte vi phạm nguyên lý cơ bản của kỹ thuật đảo ngược: **phải đọc byte để xác định định dạng**.
+Các ứng dụng thực tế hiện đại không bao giờ chỉ gồm một ngôn ngữ duy nhất:
+- **Android APK**: Chứa giao diện Java/Kotlin (DEX), kết nối qua JNI tới thư viện native C++ (`libnative.so`), bên trong có thể nhúng module Rust hoặc engine Flutter/React Native.
+- **Unity Game**: Giao diện C# biên dịch qua IL2CPP thành mã máy native C++ (`libil2cpp.so`/`GameAssembly.dll`) kết hợp file siêu dữ liệu `global-metadata.dat`.
+- **Electron Desktop**: Bao gồm tiến trình Node.js (JavaScript), Chromium renderer, và các C++ native addons (`.node`).
+Việc chia micro-skills buộc agent phải liên tục chuyển đổi ngữ cảnh, gây mất dấu vết phân tích và làm tràn context window.
 
-Sáu link cuối chỉ để trích dẫn, không thành skill. awesome-reverse-engineering là chỉ mục tool theo câu hỏi, nguồn tên cho `tools`. VM-Packages là hạng mục gói FLARE-VM; không nhận Exploitation, Shellcode, Payload Development, Credential Access. capa-rules là namespace năng lực cho `malware-analysis`. MASTG là danh mục tool mobile; không nhập pentest. Frida và mitmproxy là tool, không phải skill pack.
+### 3. Methodology Duplication (Trùng lặp phương pháp luận)
+Mọi tác vụ reverse engineering đều chia sẻ cùng một phương pháp luận cốt lõi:
+- Băm định danh (SHA-256) và xác minh tính toàn vẹn.
+- Phân tích luồng điều khiển (CFG) và cấu trúc hàm.
+- Truy vết tham chiếu chéo (`xrefs`) từ chuỗi ký tự và hằng số tới mã sử dụng.
+- Phân biệt giữa quan sát thực tế (observation) và suy đoán (hypothesis).
+Tách thành 18 skill khiến các nguyên tắc này bị sao chép lặp lại 18 lần, gây khó khăn cho việc duy trì nhất quán.
 
-## secskills
+### 4. Router Confusion (Xung đột và loãng context của LLM Router)
+Khi profile chứa hơn 20 skill, mô tả của các skill cạnh tranh nhau trong system prompt của mô hình ngôn ngữ. Router dễ bị đánh lừa bởi từ khóa (ví dụ: thấy chuỗi "iOS" trong mô tả task về Android liền kích hoạt `ios-reverse`), dẫn đến kích hoạt sai skill và lãng phí vòng lặp giải quyết.
 
-30 thư mục, API contents trên `main`, mỗi tên một hàng. Cột Việc chỉ có bốn giá trị.
+---
 
-| Skill upstream | Trong profile | Việc | Giai đoạn |
-| --- | --- | --- | --- |
-| analyzing-binaries | `reverse-engineering` | đã có | đã xong |
-| analyzing-dotnet-assemblies | `dotnet` | đã có | sóng 1 |
-| analyzing-ios-binaries | `ios` | đã có | sóng 1 |
-| analyzing-macos-binaries | `apple` | đã có | sóng 1 |
-| reversing-browser-extensions | `browser-extension` | đã có | sóng 1 |
-| reversing-obfuscated-javascript | `javascript`, `obfuscation` | đã có | sóng 1 |
-| reversing-unity-il2cpp | `il2cpp` | đã có | sóng 1 |
-| devirtualizing-vm-protected-code | `obfuscation`, không tách file | gộp vào skill đã có | sóng 1 |
-| reversing-xamarin-maui | `dotnet` | gộp vào skill đã có | sóng 1 |
-| reviewing-cryptography | `reverse-engineering` | gộp vào skill đã có | không sóng riêng |
-| unpacking-protected-binaries | `obfuscation`, không tách file | gộp vào skill đã có | sóng 1 |
-| analyzing-firmware-images | `firmware` | sóng 2 (placeholder sau) | sóng 2 |
-| analyzing-go-binaries | `go` | sóng 2 (placeholder sau) | sóng 2 |
-| analyzing-rust-binaries | `rust` | sóng 2 (placeholder sau) | sóng 2 |
-| diffing-binary-patches | `binary-diff` | sóng 2 (placeholder sau) | sóng 2 |
-| reversing-flutter-apps | `flutter` | sóng 2 (placeholder sau) | sóng 2 |
-| reversing-network-protocols | `protocol` | sóng 2 (placeholder sau) | sóng 2 |
-| reversing-react-native-apps | `react-native` | sóng 2 (placeholder sau) | sóng 2 |
-| auditing-code-for-vulnerabilities | không tạo | ngoài phạm vi | không làm |
-| auditing-mcp-servers | không tạo | ngoài phạm vi | không làm |
-| auditing-php-applications | không tạo | ngoài phạm vi | không làm |
-| auditing-supply-chain | không tạo | ngoài phạm vi | không làm |
-| hunting-web-backdoors | không tạo | ngoài phạm vi | không làm |
-| maintaining-engagement-state | không tạo | ngoài phạm vi | không làm |
-| mapping-attack-techniques | không tạo | ngoài phạm vi | không làm |
-| orchestrating-vulnerability-research | không tạo | ngoài phạm vi | không làm |
-| reporting-security-findings | không tạo | ngoài phạm vi | không làm |
-| reviewing-code-changes | không tạo | ngoài phạm vi | không làm |
-| securing-ai-systems | không tạo | ngoài phạm vi | không làm |
-| vetting-agent-extensions | không tạo | ngoài phạm vi | không làm |
+## 3. Ma trận quyết định: Khi nào giữ trong `references/` vs Khi nào tách Skill
 
-`reviewing-cryptography` đi vào thân `reverse-engineering` khi thân đó được sửa. Không skill riêng, không mở lại thân đó trong sóng 1.
+| Tiêu chí | Giữ trong `references/` của `reverse-engineering` | Tách thành Skill độc lập |
+|---|---|---|
+| **Mục tiêu phân tích** | Mọi tác vụ phân tích, đọc hiểu, dịch ngược cấu trúc, giải mã logic nhị phân | Chuẩn bị hạ tầng, cài đặt môi trường, cấu hình VM/OS |
+| **Hợp đồng đầu ra** | Báo cáo phân tích kỹ thuật, Evidence ID, JSON schema, phát hiện logic | Thay đổi trạng thái máy chủ, khởi chạy máy ảo, cấu hình proxy |
+| **Quyền can thiệp hệ thống** | Đọc tĩnh (Read-only), phân tích an toàn, quan sát bị động trong sandbox | Cài đặt package hệ thống, thay đổi kernel, ghi cấu hình (`tool-setup`) |
+| **Ngữ cảnh kích hoạt** | Kích hoạt có điều kiện sau bước Pre-Triage trong cùng phiên | Được gọi độc lập trước khi bắt đầu phiên phân tích |
 
-`reversing-obfuscated-javascript` không thành file mới. Bundle và ASAR ở `javascript`. Phần làm rối ở `obfuscation`.
+---
 
-Mười hai hàng ngoài phạm vi là audit source, PHP, web, supply chain, AI, MCP, review diff source, và vận hành (engagement, báo cáo, ATT&CK, điều phối nghiên cứu lỗ hổng). Không tạo skill.
+## 4. Quản lý ngữ cảnh và Băng thông phân tích
 
-`android`, `jvm`, `desktop`, `tools` không có hàng secskills. Chúng ở bảng reverse-skill và ở sóng 1.
+Theo quy định của `RULES.md`, agent làm việc trong một phiên duy nhất (`Do not spawn subagents, task agents, or parallel workers. Answer the assigned question in this session`).
 
-## reverse-skill
+Khi xử lý các mục tiêu có sản lượng phân tích lớn (Heavy Output Targets):
+1. **Inlined Rust Standard Library**: Hàng trăm hàm monomorphized và panic handlers. Agent ghi nhận chuỗi panic và cắt tỉa (prune) các nhánh cold path, chỉ giữ lại luồng logic chính.
+2. **Bundle JavaScript khổng lồ (>100k dòng)**: Lưu trữ kết quả phân rã trung gian vào tệp tạm thời trong workspace; chỉ trích xuất hàm mục tiêu và Evidence ID vào sổ ghi chép (ledger).
+3. **Binary Diff diện rộng**: Lọc bỏ các hàm có độ tương đồng tuyệt đối (`similarity = 1.00`), chỉ tập trung phân tích các khối lệnh được thêm/sửa có độ tương đồng từ `0.50` đến `0.99`.
 
-49 thư mục trên `main`, cộng `INDEX.md`. Một nhóm một hàng khi cùng một quyết định. Tên dưới đây là tên thư mục thật.
+---
 
-### Giữ, trỏ vào skill hiện có
+## 5. Danh mục tài liệu tham chiếu chuyên sâu (`references/`)
 
-| Thư mục | Trong profile |
-| --- | --- |
-| apk-reverse | `android` |
-| mobile-reverse | `android`, `ios` |
-| dotnet-reverse | `dotnet` |
-| js-reverse | `javascript` |
-| browser-extension-reverse | `browser-extension` |
-| macos-reverse | `apple` |
-| ida-reverse, ghidra-reverse, radare2, binary-ninja-reverse | `tools`, `reverse-engineering` |
-| malware-analysis | `malware-analysis` |
-| go-rust-reverse | sóng 2: `go`, `rust` |
-| firmware-pentest | sóng 2: `firmware`; không lấy phần exploit |
-| protocol-reverse | sóng 2: `protocol` |
-| binary-diff | sóng 2: `binary-diff` |
-| thick-client | `desktop` |
-| reverse-engineering | `reverse-engineering` đã có |
+Tất cả 25 tài liệu tham chiếu kỹ thuật nằm trong `profiles/re/agent/skills/reverse-engineering/references/`:
 
-`reverse-engineering` có thư mục con `dsl-vm-reverse`. Không tách file. Khi viết `obfuscation`, chỉ lấy ranh giới VM/DSL, không copy bước.
+### Hạ tầng cốt lõi & Quy trình phân tích:
+1. `tools-catalog.md`: Ma trận định tuyến và hướng dẫn CLI/MCP cho IDA Pro, Ghidra (`rea`), radare2, Binary Ninja, JADX, Apktool, mitmproxy, tshark, Frida.
+2. `tools-list.json`: Danh mục công cụ và metadata tham chiếu cho hệ thống.
+3. `connection-and-recovery.md`: Phân loại lỗi kết nối MCP, xử lý timeout và khôi phục phiên REA/IDA.
+4. `evidence-workflows.md`: Phân trang dữ liệu chứng cứ lớn, so sánh phiên bản, và đối soát độ tin cậy.
+5. `native-and-artifacts.md`: Quản lý tài nguyên native, định dạng container, bóc tách gói và phục hồi tiến trình Ghidra.
+6. `static-artifact-analysis.md`: Hướng dẫn chi tiết thực hiện hợp đồng schema JSON cộng `evidence.md`, phân tích span giới hạn và chạy script kiểm tra tự động.
+7. `dynamic-analysis.md`: Hướng dẫn quan sát động (GDB, LLDB, WinDbg, Frida, QEMU, proxy) tuân thủ nghiêm ngặt điều kiện kích hoạt của `RULES.md`.
+8. `runtime-observation.md`: Kỹ thuật giám sát runtime bị động, Fiddler/HAR/SAZ và đối soát tĩnh-động.
 
-`firmware-pentest` chỉ để nhận dạng và đọc image. `patch-diff-exploit` không đi cùng `binary-diff`.
+### Ngôn ngữ & Nền tảng chuyên biệt:
+9. `native-cpp-abi.md`: Calling conventions (x64 SysV/MSVC, ARM64), vtable layout, phục hồi RTTI MSVC/Itanium, layout bộ nhớ STL.
+10. `native-rust.md`: Con trỏ béo `&str`/`&[T]`, tối ưu niche cho `Option`/`Result`, mẫu `core::panicking`, demangling legacy/v0, và bóc tách metadata `.dep-v0`.
+11. `native-golang.md`: ABI thanh ghi Go 1.17+, giải mã cấu trúc `.gopclntab`, mở rộng stack `runtime.morestack`, interface `iface`/`eface`, và type descriptors.
+12. `managed-dotnet.md`: Cấu trúc CLR PE, metadata streams (`#~`, `#Strings`), token metadata, ilspycmd, ReadyToRun và NativeAOT.
+13. `managed-jvm-dex.md`: Định dạng `.class`, `.dex`, Multidex, JADX, Smali syntax, ranh giới làm rối ProGuard/R8, và cầu nối native JNI (`RegisterNatives`).
+14. `android-applications.md`: Phân tích tĩnh cấu trúc APK/AAB, thành phần ứng dụng, phân quyền và chứng thư số.
+15. `browser-js-wasm.md`: Chrome/Firefox extensions (Manifest V2/V3), Webpack bundles, bóc tách Electron ASAR, AST deobfuscation qua Babel, và WebAssembly (`wasm2wat`).
+16. `javascript-applications.md`: Quy trình phân tích module graph, bóc tách ứng dụng Electron và truy vết tính năng JavaScript.
+17. `unity-il2cpp.md`: Ghép nối binary native (`GameAssembly.dll`/`libil2cpp.so`) với `global-metadata.dat`, Il2CppDumper, struct `Il2CppObject`/`Il2CppClass`.
+18. `mobile-ios.md`: Cấu trúc IPA, giải mã Mach-O FairPlay DRM (`LC_ENCRYPTION_INFO`), runtime Objective-C (`objc_msgSend`), Swift 5 ABI, và entitlements.
+19. `desktop-apps.md`: Ứng dụng desktop (Electron, Qt C++, WPF .NET, Win32), cơ chế lưu trữ nội bộ (SQLite, LevelDB, Registry), và các kênh IPC.
+20. `firmware-iot.md`: Định dạng firmware (uImage, SquashFS, TRX), công cụ trích xuất (`binwalk`, `unblob`), kiến trúc nhúng (MIPS delay slots, ARM Thumb mode, RISC-V), và tính địa chỉ nạp base address.
+21. `flutter-apps.md`: Kiến trúc Flutter engine (`libflutter.so`), phân tích Dart AOT snapshot (`libapp.so`), cấu trúc phân vùng isolate, và con trỏ tagged pointer.
+22. `react-native-apps.md`: Ứng dụng React Native, giải mã bytecode Hermes (`.hbc`), phân tích Metro bundle (`index.android.bundle`), và cầu nối TurboModules.
+23. `protocols-network.md`: Khung giao thức nhị phân proprietary, giải mã Protobuf wire format không cần file `.proto`, dịch ngược gRPC và phân tích luồng PCAP.
+24. `binary-diffing.md`: Kỹ thuật diff nhị phân (BinDiff, Ghidra BSim), thuật toán so khớp đồ thị hàm, phương pháp luận phân tích bản vá bảo mật (patch analysis).
+25. `deobfuscation-unpacking.md`: Quy trình unpack nhị phân (tìm OEP qua chuyển vùng section và cân bằng stack), giải phẳng luồng điều khiển (CFF), giải mã chuỗi, và devirtualization cho VM bytecode.
 
-### Ngoài phạm vi
+---
 
-Một hàng, không tạo skill:
+## 6. Danh mục kịch bản tự động hóa (`scripts/`)
 
-api-security, attack-chain, browser-automation, cloud-k8s, code-audit, ctf-sandbox, database-security, edr-bypass-re, email-security, hardware-security, identity-federation, llm-security, ot-ics, patch-diff-exploit, pentest-tools, pwn-chain, radio-sdr, supply-chain-security, threat-hunting, threat-intelligence, wifi-wireless, windows-ad.
+Các công cụ Python tiêu chuẩn đi kèm skill `reverse-engineering` trong thư mục `profiles/re/agent/skills/reverse-engineering/scripts/`:
+- `elf_triage.py`: Phân tích nhanh ELF header, segment LOAD deltas, section offset mapping, và giải mã XOR lặp.
+- `elf_symbols.py`: Liệt kê symbol và cô lập span địa chỉ của hàm application code phục vụ disassembly có giới hạn.
+- `check_deliverables.py`: Kiểm tra tự động tính hợp lệ của schema JSON và các trích dẫn bằng chứng trong `evidence.md`.
 
-`pentest-tools` có thư mục con `src-hunter`. Cả nhánh ngoài phạm vi. Không lấy playbook.
+---
 
-`digital-forensics` cũng không tạo skill. Memory, disk, và IR rộng hơn profile này. Sample vẫn ở `malware-analysis`.
-
-### Hạ tầng
-
-Không phải skill phân tích: config, scripts, tests, references, ops, field-journal, case-review, diagram-generator, docs-generator.
-
-## Ba giai đoạn
-
-### Sóng 0, xong
-
-Mười một placeholder đã có. `profiles/re/agent/RULES.md` đã có. Ba thân `malware-analysis`, `reverse-engineering`, `static-artifact-analysis` không viết lại ở sóng 1.
-
-`tool-setup` is a real skill, not a placeholder and not part of the wave-1 body order.
-
-### Sóng 1
-
-Viết thân các placeholder đã có, theo thứ tự. Xong một thân rồi mới sang thân sau. Không thêm thư mục.
-
-1. `tools`. Đọc ida-reverse, ghidra-reverse, radare2, binary-ninja-reverse. Catalog tên. Không một skill mỗi tool. awesome-reverse-engineering chỉ để đối chiếu tên.
-2. `browser-extension`. Đọc reversing-browser-extensions và browser-extension-reverse.
-3. `il2cpp`. Đọc reversing-unity-il2cpp.
-4. `android`. Đọc apk-reverse và nửa Android của mobile-reverse. secskills không có thư mục Android.
-5. `ios`. Đọc analyzing-ios-binaries và nửa iOS của mobile-reverse.
-6. `dotnet`. Đọc analyzing-dotnet-assemblies, reversing-xamarin-maui, dotnet-reverse.
-7. `javascript`. Đọc reversing-obfuscated-javascript và js-reverse.
-8. `obfuscation`. Đọc unpacking-protected-binaries, devirtualizing-vm-protected-code, và phần làm rối của reversing-obfuscated-javascript.
-9. `jvm`. Hai nguồn không có thư mục JVM. Viết từ ranh giới placeholder hiện có: `.jar`, `.class`, tên ProGuard hoặc R8 chưa phải behavior. Không bịa quy trình từ repo khác.
-10. `apple`. Đọc analyzing-macos-binaries và macos-reverse.
-11. `desktop`. Đọc thick-client.
-
-Mỗi thân đọc skill upstream tương ứng, rồi viết lại ngắn cho profile này: khi nào mở, artifact nào, cái gì chưa phải behavior. Không copy lệnh hook, repackage, bypass, exploit.
-
-### Sóng 2
-
-Chỉ tạo placeholder khi sóng 1 xong. Chưa viết thân.
-
-| Profile | Đọc khi tạo placeholder |
-| --- | --- |
-| `firmware` | analyzing-firmware-images, firmware-pentest, không phần exploit |
-| `go` | analyzing-go-binaries, go-rust-reverse |
-| `rust` | analyzing-rust-binaries, go-rust-reverse |
-| `flutter` | reversing-flutter-apps |
-| `react-native` | reversing-react-native-apps |
-| `protocol` | reversing-network-protocols, protocol-reverse |
-| `binary-diff` | diffing-binary-patches, binary-diff |
-
-Không tạo `binary-diff` từ patch-diff-exploit.
 ## Tối ưu hóa công cụ cài đặt theo nền tảng (OS) & vai trò
 
 Mục này cung cấp ma trận công cụ reverse engineering toàn diện, được phân loại theo vai trò phân tích (Static RE, Dynamic RE, Android Lab, iOS Lab, Hypervisor) và tương thích chi tiết theo từng hệ điều hành / package manager (`brew`, `apt-get`, `dnf`, `pacman`, `winget`).
@@ -197,6 +175,7 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
   - Thiết lập remote debugging qua Docker container với namespace isolation và IPC sharing: `--ipc=host`, `--pid=host`, `--cap-add=SYS_PTRACE`, `--security-opt seccomp=unconfined`, `-p 23946:23946`.
   - Thiết lập port forwarding qua Shared NAT hoặc Bridged Network trên UTM VM (`127.0.0.1:23946`), cấu hình tường lửa Windows (`win64_remote.exe`) và vô hiệu hóa ASLR Linux.
   - Tự động hóa và tài liệu tra cứu: `setup_utm.py ida-server-info` và `profiles/re/agent/skills/tool-setup/references/ida-remote-debugging.md`.
+
 ### 2. Ma trận gói cài đặt theo Package Manager
 
 | Công cụ | macOS (`brew`) | Debian/Ubuntu (`apt-get`) | Fedora/RHEL (`dnf`) | Arch Linux (`pacman`) | Windows (`winget`) |
@@ -213,50 +192,17 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
 | `cmdline-tools`| `android-commandlinetools` | SDK Manager | SDK Manager | `android-sdk-cmdline-tools-latest` | Android Studio SDK |
 | `ipsw` | `blacktop/tap/ipsw` | Thủ công / GitHub releases | Thủ công / GitHub releases | `ipsw` (AUR) | GitHub releases |
 
-## Dynamic
+---
 
-Quyết định nằm ở `profiles/re/agent/RULES.md`.
+## 7. Tài liệu & Nguồn tham khảo
 
-Static là mặc định. Dynamic (debugger, Frida, emulator, proxy) khi parent yêu cầu, hoặc khi byte không đủ để trả lời, và chỉ trên target parent chỉ định.
-
-Hợp đồng static của task vẫn thắng. Task ghi static-only, hoặc chỉ tên `file`, `strings`, `objdump`, hoặc deliverable là schema JSON cộng `evidence.md` của `static-artifact-analysis`, thì không chạy, không debug, không emulate, không detonate.
-
-Plan này không phải hướng dẫn Frida.
-
-## Framework viết harness
-
-Chưa thành skill và không nằm trong allowlist của `tool-setup`. Bốn framework đầu cho firmware hoặc malware không có source. OSS-Fuzz-Gen và CKGFuzzer chỉ khi đã có source C/C++ hoặc header biên dịch được. Plan này chỉ ghi framework nào trả lời câu hỏi nào. Không có lệnh build, không có lệnh fuzz.
-
-|Framework|Câu hỏi nó trả lời|Repo|
-|---|---|---|
-|Qiling + UnicornAFL|Firmware và malware. Qiling, trên Unicorn, hiểu PE và ELF, mock syscall hoặc Windows API bằng Python. Chạy binary đến ngay trước parser hoặc decryptor, chụp snapshot, rồi bơm input từ AFL++ vào thanh ghi hoặc bộ nhớ.|https://github.com/qilingframework/qiling và https://github.com/AFLplusplus/unicornafl|
-|LibAFL, mode QEMU hoặc Frida|Fuzzer viết bằng Rust, khi cần tốc độ và hộp đen phức tạp hơn AFL++ thường.|https://github.com/AFLplusplus/LibAFL|
-|TinyInst và WinAFL|PE hoặc DLL Windows đóng, fuzz trong bộ nhớ, không cần source. TinyInst là lớp instrumentation. WinAFL dùng nó cho persistent mode.|https://github.com/googleprojectzero/TinyInst và https://github.com/googleprojectzero/winafl|
-|Hopper (`hopper-fuzzer`)|Thư viện động `.so` hoặc `.dll` không có source. Tự suy ràng buộc tham số và ghép lời gọi API thành harness.|https://github.com/FuzzAnything/hopper|
-|OSS-Fuzz-Gen|Đã có source C/C++, driver, hoặc header cộng mã giả từ Ghidra/IDA mà biên dịch lại được. LLM đọc AST và call graph, sinh `LLVMFuzzerTestOneInput`, tự biên dịch, đọc lỗi biên dịch hoặc crash giả do con trỏ sai hoặc struct chưa khởi tạo, rồi sửa harness.|https://github.com/google/oss-fuzz-gen|
-|CKGFuzzer|Thư viện C/C++ phải gọi API đúng thứ tự. Code knowledge graph cộng LLM sinh driver cho chuỗi kiểu `init_ctx` rồi `parse_header` rồi `process_body` rồi `free_ctx`.|https://github.com/security-pride/CKGFuzzer|
-
-Ánh xạ plan: Qiling gắn với sóng 2 `firmware` và với `malware-analysis`. WinAFL chỉ cho target Windows. Hopper không phải disassembler Hopper. Không tải kernel, không viết harness trong sóng 1. Hai framework này chỉ khi có source hoặc header biên dịch được. Không dùng chúng cho binary đóng. Không đưa vào sóng 1.
-
-## Nguồn
-
-https://github.com/trilwu/secskills/tree/main/secskills-core/skills
-https://github.com/zhaoxuya520/reverse-skill/tree/main/skills
-https://github.com/zhaoxuya520/reverse-skill/blob/main/skills/INDEX.md
-https://github.com/morluto/awesome-reverse-engineering
-https://github.com/mandiant/VM-Packages
-https://github.com/mandiant/capa-rules
-https://github.com/OWASP/mastg
-https://github.com/frida/frida
-https://github.com/mitmproxy/mitmproxy
-https://github.com/qilingframework/qiling
-https://github.com/AFLplusplus/unicornafl
-https://github.com/AFLplusplus/LibAFL
-https://github.com/googleprojectzero/TinyInst
-https://github.com/googleprojectzero/winafl
-https://github.com/FuzzAnything/hopper
-https://github.com/google/oss-fuzz-gen
-https://github.com/security-pride/CKGFuzzer
-https://github.com/Lakr233/vphone-cli
-https://github.com/blacktop/ipsw
-https://ipsw.me/
+- https://github.com/trilwu/secskills/tree/main/secskills-core/skills
+- https://github.com/zhaoxuya520/reverse-skill/tree/main/skills
+- https://github.com/morluto/awesome-reverse-engineering
+- https://github.com/mandiant/VM-Packages
+- https://github.com/OWASP/mastg
+- https://github.com/frida/frida
+- https://github.com/mitmproxy/mitmproxy
+- https://github.com/Lakr233/vphone-cli
+- https://github.com/blacktop/ipsw
+- https://ipsw.me/

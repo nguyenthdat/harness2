@@ -2,14 +2,12 @@
 name: reverse-engineering
 description: Route a shipped binary, package, or offline capture to the registered REA or IDA tool. Use for decompilation, imports, format inventory, and claims source does not establish. Skip ordinary source-repository architecture.
 metadata:
-  version: "45"
+  version: "46"
 ---
 
 # Reverse engineering
 
-Obey `RULES.md`. This skill only selects the REA or IDA operation. Capability
-and IOC questions start at `skill://malware-analysis`. A schema JSON plus
-`evidence.md` is `skill://static-artifact-analysis`.
+Obey `RULES.md`. This skill coordinates format triage, decompilation, struct recovery, and static/dynamic observation. For a schema JSON plus `evidence.md`, follow [references/static-artifact-analysis.md](references/static-artifact-analysis.md). For dynamic observation when `RULES.md` authorizes it, consult [references/dynamic-analysis.md](references/dynamic-analysis.md).
 
 Use REA when a claim depends on a shipped binary or package, decompilation, or
 an offline capture, and source does not already establish it. For ordinary
@@ -43,6 +41,43 @@ rea analyze-javascript-application /absolute/path/to/app --json
 
 Do not download a REA package to obtain the CLI. Native CLI analysis still
 needs its selected engine. Do not launch the sample.
+
+## Pre-triage and progressive disclosure
+
+To prevent context window saturation and routing blindness, analysis follows a strict 3-tier progressive disclosure model:
+1. **Tier 1 (Core Entrypoint)**: This skill provides universal execution constraints, tool routing, and summary-first workflows.
+2. **Tier 2 (Mandatory Pre-Triage)**: Inspect file magic, container structure, and compiler signatures before choosing decompilation strategies.
+3. **Tier 3 (Selective Reference Loading)**: Load only the single domain reference corresponding to the identified runtime or format.
+
+### Pre-Triage Format & Compiler Signature Routing
+
+Inspect the target with fast, target-free tools (`file`, `strings`, or REA inspection tools) before opening a full decompiler:
+
+| Detected Container / Signature | Compiler / Runtime Indicator | Progressive Reference to Load |
+|---|---|---|
+| ELF / PE / Mach-O with `.gopclntab`, `runtime.morestack` | Go (Go 1.17+ register ABI) | [references/native-golang.md](references/native-golang.md) |
+| ELF / PE / Mach-O with `rust_eh_personality`, `core::panicking`, `.dep-v0` | Rust (`rustc`, legacy or v0 mangling) | [references/native-rust.md](references/native-rust.md) |
+| ELF / PE / Mach-O with vtables, RTTI (`.?AV`, `std::type_info`) | C++ (MSVC / GCC / Clang ABI) | [references/native-cpp-abi.md](references/native-cpp-abi.md) |
+| PE with `IMAGE_COR20_HEADER`, `#~` stream, or `XALZ` compressed assemblies | Managed .NET / CIL / Xamarin / NativeAOT | [references/managed-dotnet.md](references/managed-dotnet.md) |
+| `dex\n035\0`, `classes.dex`, APK, AAB, JAR | JVM / Android Dalvik / ART / Smali | [references/managed-jvm-dex.md](references/managed-jvm-dex.md) & [references/android-applications.md](references/android-applications.md) |
+| `global-metadata.dat` (`0xFAB11BAF`) + `libil2cpp.so`/`GameAssembly.dll` | Unity IL2CPP (v24, v27, v29, v31, v39) | [references/unity-il2cpp.md](references/unity-il2cpp.md) |
+| `libapp.so` with `kDartVmSnapshotData` / `kDartIsolateSnapshotInstructions` | Flutter Application (Dart AOT) | [references/flutter-apps.md](references/flutter-apps.md) |
+| `index.android.bundle` with `\xc6\x1f\xbc\x03` or Hermes bytecode | React Native (Hermes / Metro bundle) | [references/react-native-apps.md](references/react-native-apps.md) |
+| Mach-O with `__objc_classlist` / Swift 5 `$s` / `Payload/*.app` | Apple iOS / macOS Native App | [references/mobile-ios.md](references/mobile-ios.md) |
+| Installed folder with `app.asar`, `QtCore.dll`, or `.baml` resources | Desktop Thick Client (Electron, Qt, WPF) | [references/desktop-apps.md](references/desktop-apps.md) |
+| Web extension (`manifest.json`), bundle JS, or WASM (`\0asm`) | Web / Browser JS / WebAssembly | [references/browser-js-wasm.md](references/browser-js-wasm.md) & [references/javascript-applications.md](references/javascript-applications.md) |
+| Firmware image (`.bin`, `.img`), SquashFS (`hsqs`/`sqsh`), U-Boot (`0x27051956`) | Embedded Firmware / IoT (MIPS, ARM, RISC-V) | [references/firmware-iot.md](references/firmware-iot.md) |
+| Two binary versions for patch or symbol comparison | Vulnerability Patch / Symbol Migration | [references/binary-diffing.md](references/binary-diffing.md) |
+| Packed sections (`UPX0`, `.pack`), flattened CFG, encrypted strings | Obfuscated / Packed Code / Custom VM | [references/deobfuscation-unpacking.md](references/deobfuscation-unpacking.md) |
+| Packet capture (`.pcap`, `.pcapng`), Protobuf, gRPC, WebSocket | Network Protocols & Message Streams | [references/protocols-network.md](references/protocols-network.md) |
+| Task deliverable is schema JSON plus `evidence.md` | Schema Validation & Bounded Disassembly | [references/static-artifact-analysis.md](references/static-artifact-analysis.md) |
+| Authorized runtime observation (debuggers, Frida, emulators, proxy) | Controlled Runtime Sandboxing | [references/dynamic-analysis.md](references/dynamic-analysis.md) |
+| Tool catalog, capabilities, and CLI routing | Tool Selection & Command Matrix | [references/tools-catalog.md](references/tools-catalog.md) & [references/tools-list.json](references/tools-list.json) |
+
+### Single-Session Context & Boundary Rules
+- **Obey `RULES.md`**: Do not spawn subagents, task agents, or parallel workers. Answer the assigned question in this session.
+- **Load Selectively**: Load only the reference document required for the immediate target boundary.
+- **Isolate Heavy Outputs**: When dealing with heavy output operations (such as inlined Rust standard library bloat, massive JavaScript AST deobfuscation, or wide binary diffs), isolate intermediate dumps in temporary workspace scratch files and record only concise findings and Evidence IDs in the ledger.
 
 ## Route the target first
 
@@ -385,17 +420,33 @@ as complete while required questions remain open.
 
 ## Read only the relevant guide
 
-- Native binaries, managed assemblies, archives, and extraction:
-  [references/native-and-artifacts.md](references/native-and-artifacts.md)
-- ASARs, extracted JavaScript, feature tracing, and version comparison:
-  [references/javascript-applications.md](references/javascript-applications.md)
-- Android APK declarations, classes, methods, and static references:
-  [references/android-applications.md](references/android-applications.md)
-- Browser/Electron observation (passive and scenario) and static/runtime
-  reconciliation:
-  [references/runtime-observation.md](references/runtime-observation.md)
-- Evidence paging, comparisons, residual unknowns, and verification:
-  [references/evidence-workflows.md](references/evidence-workflows.md)
+### Core Infrastructure & Recovery
+- Connection failure recovery and timeouts: [references/connection-and-recovery.md](references/connection-and-recovery.md)
+- Evidence paging, comparisons, residual unknowns, and verification: [references/evidence-workflows.md](references/evidence-workflows.md)
+- Browser/Electron observation (passive and scenario) and static/runtime reconciliation: [references/runtime-observation.md](references/runtime-observation.md)
+- Tool catalog, CLI routing, and MCP capabilities: [references/tools-catalog.md](references/tools-catalog.md) & [references/tools-list.json](references/tools-list.json)
+- Native binaries, managed assemblies, archives, and extraction: [references/native-and-artifacts.md](references/native-and-artifacts.md)
+
+### Specialized Domain References
+- Native C++ calling conventions, vtables, and RTTI recovery: [references/native-cpp-abi.md](references/native-cpp-abi.md)
+- Native Rust symbols, memory layout, and panic triage: [references/native-rust.md](references/native-rust.md)
+- Native Go ABI, pclntab recovery, and runtime structures: [references/native-golang.md](references/native-golang.md)
+- Managed .NET assemblies, CLR metadata tokens, and NativeAOT: [references/managed-dotnet.md](references/managed-dotnet.md)
+- Managed JVM bytecode, Android DEX, and Smali: [references/managed-jvm-dex.md](references/managed-jvm-dex.md)
+- Android APK declarations, classes, methods, and static references: [references/android-applications.md](references/android-applications.md)
+- Browser extensions, JavaScript bundles, AST deobfuscation, and WebAssembly: [references/browser-js-wasm.md](references/browser-js-wasm.md)
+- ASARs, extracted JavaScript, feature tracing, and version comparison: [references/javascript-applications.md](references/javascript-applications.md)
+- Unity IL2CPP binaries, global-metadata.dat, and Il2CppDumper: [references/unity-il2cpp.md](references/unity-il2cpp.md)
+- Apple iOS IPAs, Mach-O binaries, Objective-C, and Swift: [references/mobile-ios.md](references/mobile-ios.md)
+- Desktop thick client applications (Electron, Qt, WPF, Win32): [references/desktop-apps.md](references/desktop-apps.md)
+- Firmware images, filesystem carving, and embedded architectures: [references/firmware-iot.md](references/firmware-iot.md)
+- Flutter applications and Dart AOT snapshot analysis: [references/flutter-apps.md](references/flutter-apps.md)
+- React Native applications, Metro bundles, and Hermes bytecode: [references/react-native-apps.md](references/react-native-apps.md)
+- Custom binary protocols, Protobuf, gRPC, and PCAP stream analysis: [references/protocols-network.md](references/protocols-network.md)
+- Binary diffing, patch analysis, and symbol migration: [references/binary-diffing.md](references/binary-diffing.md)
+- Deobfuscation, control flow de-flattening, and unpacking: [references/deobfuscation-unpacking.md](references/deobfuscation-unpacking.md)
+- Static artifact analysis (schema JSON plus evidence.md contract): [references/static-artifact-analysis.md](references/static-artifact-analysis.md)
+- Controlled dynamic analysis and sandbox observation: [references/dynamic-analysis.md](references/dynamic-analysis.md)
 
 ## Finish the task
 
