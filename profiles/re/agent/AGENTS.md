@@ -26,6 +26,5 @@ These eleven skills are placeholders. A family note does not replace `skill://re
 - `skill://desktop` — an installed desktop app or a package inventory.
 - `skill://obfuscation` — packed or flattened code, recovered strings, or a dispatcher.
 - `skill://browser-extension` — a supplied CRX, XPI, or an unpacked directory with manifest.json. Static manifest and script inventory only.
-- `skill://tools` — a catalog of analysis tools, including Frida and mitmproxy. Naming a tool does not authorize launching a sample or writing a hook.
 
 `agents/` is inactive.
