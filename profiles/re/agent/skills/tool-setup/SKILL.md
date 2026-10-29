@@ -3,12 +3,14 @@ name: tool-setup
 description: >-
   Detect the host and, only when the parent asks, install an allowlisted
   reverse-engineering tool set with that OS package manager. Linux prefers
-  KVM, macOS prefers Parallels, and Windows prefers VMware. Android covers
-  the emulator, a su check, avdmanager/sdkmanager, automated KernelSU
-  patching that replaces an emulator kernel-ranchu on Google Play images,
-  and mitmproxy system CA installation / SSL pinning bypass tooling.
-  Provides setup_android_emulator.py and setup_proxy_ca.py. iOS tooling is macOS
-  only, covering simctl, vphone-cli research VMs, and blacktop/ipsw.
+  KVM, macOS prefers UTM (with Parallels fallback), and Windows prefers VMware.
+  Supports UTM VM snapshot lifecycle, QCOW2 differential overlays via
+  setup_utm.py, and IDA Pro remote debugging (Docker remote IPC, UTM VM dbgsrv,
+  port forwarding). Android covers the emulator, a su check, avdmanager/sdkmanager,
+  automated KernelSU patching that replaces an emulator kernel-ranchu on Google
+  Play images, and mitmproxy system CA installation / SSL pinning bypass tooling.
+  Provides setup_android_emulator.py, setup_proxy_ca.py, and setup_utm.py. iOS
+  tooling is macOS only, covering simctl, vphone-cli research VMs, and blacktop/ipsw.
   Does not install IDA or write a kernel on a physical device.
 ---
 
@@ -37,10 +39,12 @@ Read the single JSON object on stdout.
 - `tools` maps each name to `present` and `path`. Monitored tools include
   `radare2`, `jadx`, `apktool`, `binwalk`, `frida`, `mitmproxy`, `tshark`,
   `adb`, `emulator`, `avdmanager`, `sdkmanager`, `qemu`, `prlctl`, `vmrun`,
-  `xcrun`, `ida-mcp`, `vphone-cli`, and `ipsw`.
-- `hypervisor.preferred` is `kvm` on Linux, `parallels` on macOS, and `vmware`
-  on Windows. `hypervisor.present` is that hypervisor, not QEMU.
-  `hypervisor.qemu_present` is separate. Do not prefer QEMU over the platform
+  `xcrun`, `ida-mcp`, `vphone-cli`, `ipsw`, `utmctl`, and `qemu-img`.
+- `hypervisor.preferred` is `kvm` on Linux, `utm` (or `parallels`) on macOS, and
+  `vmware` on Windows. `hypervisor.present` indicates availability of that hypervisor.
+  On macOS, `hypervisor.utm_present`, `hypervisor.utmctl_path`, and
+  `hypervisor.qemu_img_present` indicate UTM and QCOW2 tool readiness.
+  `hypervisor.qemu_present` is separate. Do not prefer raw QEMU over the platform
   hypervisor.
 - `android.su` is `null` unless `--probe-android` was passed.
 - `android.setup_script` reports the path to `setup_android_emulator.py`.
@@ -293,7 +297,74 @@ Supported subcommands:
 All subcommands support `--json` for structured automation.
 ---
 
-## 7. Troubleshooting & Setup Bug Reference
+## 7. UTM Hypervisor & QCOW2 Snapshot Management
+
+On macOS Apple Silicon (`arm64`), UTM provides hardware-accelerated guest virtualization
+with near bare-metal performance via Apple's `Virtualization.framework`, alongside QEMU
+emulation for cross-architecture targets.
+
+### VM Control & Snapshots (`utmctl`)
+- List virtual machines: `utmctl list`
+- Inspect status: `utmctl status <vm_uuid_or_name>`
+- Create snapshot: `utmctl snapshot create <vm> --name <name>`
+- Restore snapshot: `utmctl snapshot restore <vm> --snapshot <name>`
+- Query IP: `utmctl ip-address <vm>`
+
+### QCOW2 Disk Architecture & Snapshots (`qemu-img`)
+- **Copy-On-Write Overlays**: Keep master OS base images read-only (`-b base.qcow2 -F qcow2`) and execute dynamic analysis on disposable differential disks.
+- **Internal Snapshots**: Manage ad-hoc checkpoints via `qemu-img snapshot [-c|-a|-d|-l]`.
+- Read [`references/utm-hypervisor-and-snapshots.md`](references/utm-hypervisor-and-snapshots.md) for sandbox lifecycle details, copy-on-write overlays, and networking topologies.
+
+### Automated Script (`setup_utm.py`)
+Run helper: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py <subcommand>`
+- `status`: Checks UTM.app, `utmctl`, `qemu-img`, and lists registered VMs.
+- `list-vms`: Enumerates registered VMs with UUID and status.
+- `snapshot-list <vm>`: Lists snapshots for VM.
+- `snapshot-create <vm> <name>`: Creates a snapshot.
+- `snapshot-restore <vm> <name>`: Restores a snapshot.
+- `qcow2-create <output_path> <size_gb> [--backing <base_path>]`: Creates QCOW2 disk image.
+- `qcow2-snapshot <qcow2_path> [--create <n> | --restore <n> | --list | --delete <n>]`: Manages internal QCOW2 snapshots.
+- `ida-server-info`: Locates IDA `dbgsrv` and prints Docker/UTM configuration templates.
+All subcommands support `--json`.
+---
+
+## 8. IDA Pro Remote Debugging (Docker Remote IPC & UTM VM Setup)
+
+Dynamic binary analysis often requires running target binaries in isolated execution
+environments (Docker containers or UTM virtual machines) while controlling execution
+from IDA Pro on the host.
+
+### Debug Server Binaries (`dbgsrv`)
+IDA Pro bundles standalone debug servers in `/Applications/IDA Professional 9.4.app/Contents/MacOS/dbgsrv`
+(or `$IDADIR/dbgsrv`):
+- `linux_server` / `linux_server32`: Linux x86_64 / x86
+- `armlinux_server` / `armlinux_server32`: Linux ARM64 / ARMv7
+- `win64_remote.exe` / `win32_remote32.exe`: Windows x64 / x86
+- `android_server` / `android_x64_server`: Android ARM / x86_64
+- `mac_server` / `mac_server_arm`: macOS x86_64 / Apple Silicon
+
+### Docker Remote Debugging with Host IPC
+Debugging inside containers requires port mapping, `ptrace(2)` capabilities, and IPC sharing:
+```bash
+docker run --rm -it \
+  --ipc=host \
+  --pid=host \
+  --cap-add=SYS_PTRACE \
+  --security-opt seccomp=unconfined \
+  -p 23946:23946 \
+  -v "$(pwd)":/workspace \
+  <image> /workspace/linux_server -p23946
+```
+
+### UTM VM Remote Debugging
+- **Shared Network (NAT)**: Add Port Forwarding rule in UTM Network Settings (`Host Port 23946` -> `Guest Port 23946`). In IDA Pro, connect to `127.0.0.1:23946`.
+- **Bridged Network**: Obtain guest IP with `utmctl ip-address <vm>`, connect to `<guest_ip>:23946`.
+- **Android Emulator**: Forward port via `adb forward tcp:23946 tcp:23946`, push `android_server` to `/data/local/tmp/`, and run via `adb shell su -c ...`.
+
+Read [`references/ida-remote-debugging.md`](references/ida-remote-debugging.md) for full setup guides, GUI process options, and troubleshooting steps.
+---
+
+## 9. Troubleshooting & Setup Bug Reference
 
 When emulator or rooted-VM setup fails, match the reported symptom before
 retrying privileged steps. Common failure modes include macOS AMFI rejecting
@@ -309,7 +380,7 @@ Android/iOS setup bugs.
 
 ---
 
-## 8. Never
+## 10. Never
 
 - Do not launch an untrusted malware sample outside isolated sandbox conditions.
 - Do not rewrite `mcp.json` or run `rea setup` or `rea doctor`.

@@ -60,6 +60,8 @@ TOOL_COMMANDS: dict[str, str] = {
     "ida-mcp": "ida-mcp",
     "vphone-cli": "vphone-cli",
     "ipsw": "ipsw",
+    "utmctl": "utmctl",
+    "qemu-img": "qemu-img",
 }
 PRESENT_VIA_COMMAND: dict[str, str] = {
     "radare2": "r2",
@@ -135,7 +137,9 @@ class HypervisorInfo(TypedDict):
     preferred: str
     present: bool
     qemu_present: bool
-
+    utm_present: NotRequired[bool]
+    utmctl_path: NotRequired[str | None]
+    qemu_img_present: NotRequired[bool]
 
 class AndroidInfo(TypedDict):
     adb: bool
@@ -346,16 +350,42 @@ def detect_tools() -> dict[str, ToolInfo]:
 def hypervisor_for(os_name: str, qemu_present: bool) -> HypervisorInfo:
     preferred = "unsupported"
     present = False
+    info: HypervisorInfo = {
+        "preferred": preferred,
+        "present": present,
+        "qemu_present": qemu_present,
+    }
     if os_name == "linux":
         preferred = "kvm"
         present = Path("/dev/kvm").exists()
+        info["preferred"] = preferred
+        info["present"] = present
     elif os_name == "darwin":
-        preferred = "parallels"
-        present = shutil.which("prlctl") is not None
+        utm_app = Path("/Applications/UTM.app")
+        utmctl_which = shutil.which("utmctl")
+        utm_bundled = Path("/Applications/UTM.app/Contents/MacOS/utmctl")
+        utmctl_path = utmctl_which or (str(utm_bundled) if utm_bundled.exists() else None)
+        utm_present = utm_app.exists() or utmctl_path is not None
+        qemu_img_present = shutil.which("qemu-img") is not None
+
+        info["utm_present"] = utm_present
+        info["utmctl_path"] = utmctl_path
+        info["qemu_img_present"] = qemu_img_present
+
+        if utm_present:
+            info["preferred"] = "utm"
+            info["present"] = True
+        else:
+            preferred = "parallels"
+            present = shutil.which("prlctl") is not None
+            info["preferred"] = preferred
+            info["present"] = present
     elif os_name == "windows":
         preferred = "vmware"
         present = shutil.which("vmrun") is not None
-    return {"preferred": preferred, "present": present, "qemu_present": qemu_present}
+        info["preferred"] = preferred
+        info["present"] = present
+    return info
 
 
 def simctl_available() -> bool:
