@@ -7,9 +7,9 @@ Comprehensive guide to configuring IDA Pro remote debugging servers across Linux
 ## 1. IDA Pro Debug Server Binaries
 
 IDA Pro bundles standalone debug server binaries inside its installation directory:
-- macOS: `/Applications/IDA Professional 9.4.app/Contents/MacOS/dbgsrv/` (or `/Applications/IDA Pro *.app/Contents/MacOS/dbgsrv/`)
-- Custom install: `$IDADIR/dbgsrv/`
-- Windows host default: `C:\Program Files\IDA Professional 9.x\dbgsrv\`
+- macOS: `$IDADIR/dbgsrv/` or dynamically under `/Applications/IDA*.app/Contents/MacOS/dbgsrv/`
+- Custom / Linux install: `$IDADIR/dbgsrv/` or `/opt/ida*/dbgsrv/`
+- Windows host: `%IDADIR%\dbgsrv\` or `C:\Program Files\IDA*\dbgsrv\`
 
 ### Server Binary Architecture Mapping
 
@@ -163,7 +163,9 @@ adb forward tcp:23946 tcp:23946
 ### Step 2: Push Server Binary to Android Device
 Select the binary matching emulator architecture (`android_server` for ARM/ARM64, or `android_x64_server` for x86_64 Google APIs image):
 ```bash
-adb push /Applications/IDA\ Professional\ 9.4.app/Contents/MacOS/dbgsrv/android_server /data/local/tmp/android_server
+# Resolve dbgsrv dynamically or via setup_utm.py ida-server-info
+DBGSRV_DIR="${IDADIR:-$(ls -d /Applications/IDA*.app/Contents/MacOS/dbgsrv 2>/dev/null | head -n1)}"
+adb push "$DBGSRV_DIR/android_server" /data/local/tmp/android_server
 adb shell chmod 755 /data/local/tmp/android_server
 ```
 

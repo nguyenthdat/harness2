@@ -335,8 +335,9 @@ environments (Docker containers or UTM virtual machines) while controlling execu
 from IDA Pro on the host.
 
 ### Debug Server Binaries (`dbgsrv`)
-IDA Pro bundles standalone debug servers in `/Applications/IDA Professional 9.4.app/Contents/MacOS/dbgsrv`
-(or `$IDADIR/dbgsrv`):
+IDA Pro bundles standalone debug servers inside its installation directory under `dbgsrv/`.
+Resolve the directory dynamically via `$IDADIR/dbgsrv`, `/Applications/IDA*.app/Contents/MacOS/dbgsrv`,
+or automatically via `uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py ida-server-info`:
 - `linux_server` / `linux_server32`: Linux x86_64 / x86
 - `armlinux_server` / `armlinux_server32`: Linux ARM64 / ARMv7
 - `win64_remote.exe` / `win32_remote32.exe`: Windows x64 / x86

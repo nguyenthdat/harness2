@@ -433,27 +433,36 @@ def cmd_qcow2_snapshot(
 
 
 def locate_dbgsrv_dir() -> Path | None:
-    # 1. Check $IDADIR/dbgsrv
-    idadir = os.environ.get("IDADIR")
-    if idadir:
-        p = Path(idadir) / "dbgsrv"
-        if p.is_dir():
-            return p
+    # 1. Check $IDADIR/dbgsrv or $IDA_DBGSRV
+    for env_var in ("IDA_DBGSRV", "IDADIR", "IDA_DIR"):
+        val = os.environ.get(env_var)
+        if val:
+            p = Path(val)
+            if p.name == "dbgsrv" and p.is_dir():
+                return p
+            if (p / "dbgsrv").is_dir():
+                return p / "dbgsrv"
 
-    # 2. Check /Applications/IDA Professional 9.4.app/Contents/MacOS/dbgsrv
-    p_exact = Path("/Applications/IDA Professional 9.4.app/Contents/MacOS/dbgsrv")
-    if p_exact.is_dir():
-        return p_exact
+    # 2. Glob general /Applications/IDA*.app/Contents/MacOS/dbgsrv (highest version first)
+    matches_mac = sorted(
+        glob.glob("/Applications/IDA*.app/Contents/MacOS/dbgsrv"),
+        reverse=True,
+    )
+    if matches_mac:
+        return Path(matches_mac[0])
 
-    # 3. Glob /Applications/IDA Pro *.app/Contents/MacOS/dbgsrv
-    matches = glob.glob("/Applications/IDA Pro*.app/Contents/MacOS/dbgsrv")
-    if matches:
-        return Path(matches[0])
+    # 3. Check user ~/Applications
+    user_mac = sorted(
+        glob.glob(str(Path.home() / "Applications/IDA*.app/Contents/MacOS/dbgsrv")),
+        reverse=True,
+    )
+    if user_mac:
+        return Path(user_mac[0])
 
-    # 4. Glob general /Applications/IDA*.app/Contents/MacOS/dbgsrv
-    matches_gen = glob.glob("/Applications/IDA*.app/Contents/MacOS/dbgsrv")
-    if matches_gen:
-        return Path(matches_gen[0])
+    # 4. Check Linux standard locations
+    for opt_path in sorted(Path("/opt").glob("ida*/dbgsrv"), reverse=True):
+        if opt_path.is_dir():
+            return opt_path
 
     return None
 

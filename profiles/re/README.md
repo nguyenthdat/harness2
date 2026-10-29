@@ -193,7 +193,7 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
   - **Linux**: KVM (`/dev/kvm`), `qemu-kvm`. Tối ưu tốc độ ảo hóa native phần cứng.
   - **Windows**: VMware Workstation (`vmrun`) hoặc Hyper-V / WSL2.
 - **IDA Pro Remote Debugging (Docker IPC & UTM VM Setup)**:
-  - Cung cấp kiến trúc server debug phân tán (`linux_server`, `win64_remote.exe`, `android_server`, `armlinux_server`) trong `/Applications/IDA Professional 9.4.app/Contents/MacOS/dbgsrv` hoặc `$IDADIR/dbgsrv`.
+  - Cung cấp kiến trúc server debug phân tán (`linux_server`, `win64_remote.exe`, `android_server`, `armlinux_server`) tự động phân giải qua `$IDADIR/dbgsrv` hoặc `/Applications/IDA*.app/Contents/MacOS/dbgsrv`.
   - Thiết lập remote debugging qua Docker container với namespace isolation và IPC sharing: `--ipc=host`, `--pid=host`, `--cap-add=SYS_PTRACE`, `--security-opt seccomp=unconfined`, `-p 23946:23946`.
   - Thiết lập port forwarding qua Shared NAT hoặc Bridged Network trên UTM VM (`127.0.0.1:23946`), cấu hình tường lửa Windows (`win64_remote.exe`) và vô hiệu hóa ASLR Linux.
   - Tự động hóa và tài liệu tra cứu: `setup_utm.py ida-server-info` và `profiles/re/agent/skills/tool-setup/references/ida-remote-debugging.md`.
