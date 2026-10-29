@@ -4,9 +4,9 @@ description: >-
   Detect the host and, only when parent asks, install allowlisted RE tools. Linux
   prefers KVM, macOS UTM, Windows VMware. Supports UTM VM snapshot lifecycle,
   QCOW2 overlays via setup_utm.py, and IDA Pro remote debugging. Supports automated
-  Ansible provisioning for Windows VMs (windows_tools.json, playbook_windows.yml,
-  setup_windows_vm.py) for osquery, tshark, sysinternals, x64dbg, computer-use-mcp,
-  and Windows Defender toggle automation (toggle_defender.ps1, playbook_defender.yml).
+  Ansible provisioning for Windows, Linux, and macOS VMs (windows_tools.json,
+  linux_tools.json, macos_tools.json, playbook_*.yml, setup_vm.py) for osquery,
+  tshark, radare2, ghidra, computer-use-mcp, and Windows Defender automation.
   Android covers emulator, su check, KernelSU patching on Play images, and mitmproxy
   CA bypass. Provides setup_android_emulator.py, setup_proxy_ca.py, setup_utm.py, and
   setup_windows_vm.py. iOS tooling is macOS only (simctl, vphone-cli, ipsw). Does
@@ -36,9 +36,9 @@ Read the single JSON object on stdout.
   `winget` that exists, or `null`.
 - `tools` maps each name to `present` and `path`. Monitored tools include
   `radare2`, `jadx`, `apktool`, `binwalk`, `frida`, `mitmproxy`, `tshark`,
-  `adb`, `emulator`, `avdmanager`, `sdkmanager`, `qemu`, `prlctl`, `vmrun`,
+  `adb`, `emulator`, `avdmanager`, `sdkmanager`, `qemu`, `vmrun`,
   `xcrun`, `ida-mcp`, `vphone-cli`, `ipsw`, `utmctl`, `qemu-img`, `ansible`, and `ansible-playbook`.
-- `hypervisor.preferred` is `kvm` on Linux, `utm` (or `parallels`) on macOS, and
+- `hypervisor.preferred` is `kvm` on Linux, `utm` on macOS, and
   `vmware` on Windows. `hypervisor.present` indicates availability of that hypervisor.
   On macOS, `hypervisor.utm_present`, `hypervisor.utmctl_path`, and
   `hypervisor.qemu_img_present` indicate UTM and QCOW2 tool readiness. UTM also
@@ -89,8 +89,8 @@ what is present, missing, manual, and unsupported.
 - static: `radare2`, `apktool`, `mitmproxy`, `tshark`, `binwalk`, `jadx` where
   that OS packages them. Winget ids that are not known are `unmapped`.
 - dynamic: on Linux, `qemu-kvm` and `qemu-system-x86` when KVM is the
-  preferred hypervisor and those packages exist. On macOS do not install
-  Parallels. On Windows do not install VMware. The paid hypervisor is
+  preferred hypervisor and those packages exist. On macOS UTM is the sole
+  preferred hypervisor. On Windows do not install VMware. The hypervisor is
   `manual`.
 - android: `android-platform-tools` on brew, or `adb` on apt, plus an
   emulator package only when the distro package exists.
@@ -368,45 +368,60 @@ docker run --rm -it \
 Read [`references/ida-remote-debugging.md`](references/ida-remote-debugging.md) for full setup guides, GUI process options, and troubleshooting steps.
 ---
 
-## 9. Windows VM Ansible Provisioning & Tool Catalog
+## 9. Virtual Machine Ansible Provisioning & Tool Catalogs (Windows, Linux, macOS)
 
-For reverse engineering, malware analysis, forensic triage, and live telemetry on Windows guests (under UTM, VMware, or Hyper-V), automated provisioning is provided via Ansible, a structured JSON tool catalog, and a dedicated helper CLI.
+For reverse engineering, malware analysis, forensic triage, and live telemetry on guest VMs (under UTM on macOS, KVM on Linux, or VMware on Windows), automated provisioning is provided via Ansible, structured JSON tool catalogs, and a unified helper CLI (`setup_vm.py`).
 
-### Tool Catalog (`ansible/windows_tools.json`)
-Contains tools across 7 core categories:
-- **`telemetry_monitoring`**: `osquery` (Facebook.osquery), `sysmon` (Microsoft.Sysinternals.Sysmon)
-- **`network_analysis`**: `tshark` / `wireshark` (WiresharkFoundation.Wireshark + Npcap loopback), `fiddler` (Telerik.Fiddler.Classic), `mitmproxy` (Mitmproxy.Mitmproxy)
-- **`forensics_triage`**: `sysinternals` (Procmon, Procexp, Autoruns, TCPView, strings), `autoruns`, `procmon`, `procdot`
-- **`debugging_disassembly`**: `x64dbg` (x64dbg.x64dbg), `ghidra` (NSA.Ghidra), `cutter` (Rizin.Cutter), `radare2` (radare2.radare2), `windbg` (Microsoft.WinDbg), `ida_dbgsrv` (win64_remote.exe firewall and staging)
-- **`pe_analysis`**: `die` (horsicq.DetectItEasy), `pestudio` (MarcOchsenmeier.pestudio), `pe-bear` (Hasherezade.PE-bear), `yara` (VirusTotal.YARA)
-- **`system_utilities`**: `7zip` (7zip.7zip), `git` (Git.Git), `python3` (Python.Python.3.12), `hxd` (MH-Nexus.HxD), `curl` (cURL.cURL), `nodejs` (Node.js LTS)
-- **`automation_agent`**: `computer-use-mcp` (@zavora-ai/computer-use-mcp, native Rust NAPI desktop automation MCP server running on Windows VM on port 4517, controlled by host AI agent as MCP client)
-### Helper CLI (`setup_windows_vm.py`)
-Run helper: `uv run scripts/setup_windows_vm.py <subcommand>` (or `uv run skill://tool-setup/scripts/setup_windows_vm.py <subcommand>`)
-- `summary [--json]`: Show high-level tool counts and category breakdown.
-- `enable-tool <id>` / `disable-tool <id>`: Toggle tools in `windows_tools.json`.
-- `add-tool`: Add a new tool to catalog with schema validation.
-- `winrm-script [-o <path>]`: Print or export `setup_winrm.ps1` for execution on guest VM.
-- `generate-inventory --host <ip> --user <user> --password <pass>`: Generate ready-to-use `inventory.ini`.
-- `run-playbook [-i <inv>] [--check] [--tags <t>] [-v]`: Run `playbook_windows.yml` against guest VM.
-- `defender [--action status|disable|enable] [--clear-exclusions] [--exclusions <paths>] [--script-only [-o <path>]] [-i <inv>]`: Manage Windows Defender realtime protection and exclusions locally or remotely.
-- `mcp-client-config --host <ip> [--port 4517] [--format sse|proxy|ssh]`: Generate Host (macOS/Linux/Agent) MCP client configuration snippet.
-### Computer Use MCP & Windows Defender Automation
-- **Computer Use MCP**: Installed globally via npm (`@zavora-ai/computer-use-mcp`, binary `%APPDATA%\npm\computer-use-mcp.cmd`). Windows VM acts as the **MCP Server** (`computer-use-mcp-console --no-demo --no-open` on port 4517) running inside the interactive desktop session (configured via scheduled task `ComputerUseMcpServer` and managed via `C:\Tools\start_computer_use_server.ps1`). The host machine (macOS/Linux) acts as the **MCP Client** connecting via SSE (`http://<VM_IP>:4517/mcp`), stdio wrapper via `mcp-proxy`, or SSH tunnel. Generate client configuration with `setup_windows_vm.py mcp-client-config --host <VM_IP>`.
-- **Windows Defender Toggle**: Disable Real-Time Monitoring and add `C:\Tools` / `C:\Workspace` exclusions during malware triage using:
-  - Remote via Ansible: `uv run scripts/setup_windows_vm.py defender --action disable`
-  - Local on Guest VM: `powershell -ExecutionPolicy Bypass -File C:\Tools\toggle_defender.ps1 -Action disable`
-  - Re-enable while preserving analysis tool exclusions: `uv run scripts/setup_windows_vm.py defender --action enable` (use `--clear-exclusions` only for pristine baseline testing)
-  - Status verification: `uv run scripts/setup_windows_vm.py defender --action status`
-### Provisioning Workflow
+### Tool Catalogs
+- **Windows (`ansible/windows_tools.json`)**: 7 core categories covering `osquery`, `sysmon`, `tshark` / `wireshark`, `fiddler`, `mitmproxy`, `sysinternals` (Procmon, Procexp, Autoruns), `x64dbg`, `ghidra`, `cutter`, `radare2`, `windbg`, `die`, `pestudio`, `pe-bear`, `yara`, `7zip`, `git`, `python3`, `hxd`, `ida_dbgsrv` (port 23946), and `computer-use-mcp` (port 4517).
+- **Linux (`ansible/linux_tools.json`)**: Distro packages (APT, DNF, Pacman) covering `osquery`, `tshark`, `tcpdump`, `gdb`, `radare2`, `ghidra`, `strace`, `ltrace`, `binwalk`, `yara`, `checksec`, `upx`, `python3`, `uv`, `git`, `curl`, `7zip`, `ida_dbgsrv` (port 23946), and `computer-use-mcp` (port 4517).
+- **macOS (`ansible/macos_tools.json`)**: Homebrew formulae and casks covering `osquery`, `tshark`, `radare2`, `ghidra`, `binwalk`, `yara`, `ipsw`, `jtool2`, `python3`, `uv`, `git`, `p7zip`, `curl`, `ida_dbgsrv` (port 23946), and `computer-use-mcp` (port 4517).
+
+### Helper CLI (`setup_vm.py` / `setup_windows_vm.py`)
+Run helper: `uv run scripts/setup_vm.py <subcommand> [--os {windows,linux,macos}]` (or `uv run skill://tool-setup/scripts/setup_vm.py <subcommand>`):
+- `summary [--os OS] [--json]`: Show high-level tool counts and category breakdown.
+- `list [--os OS] [--category CAT] [--tag TAG] [--enabled-only] [--json]`: Enumerate tools in the specified OS catalog.
+- `enable-tool [--os OS] <id>` / `disable-tool [--os OS] <id>`: Toggle tools in the catalog.
+- `add-tool [--os OS]`: Add a new tool to catalog with schema validation.
+- `winrm-script [-o <path>]`: Print or export `setup_winrm.ps1` for execution on Windows guest VMs.
+- `generate-inventory [--os OS] --host <ip> --user <user> [--password <pass>] [--key-file <key>]`: Generate ready-to-use `inventory_<os>.ini`.
+- `run-playbook [--os OS] [-i <inv>] [--check] [--tags <t>] [-v]`: Run `playbook_<os>.yml` against guest VM.
+- `defender [--action status|disable|enable] [--clear-exclusions] [--exclusions <paths>] [--script-only [-o <path>]] [-i <inv>]`: Manage Windows Defender realtime protection and exclusions locally or remotely (Windows only).
+- `mcp-client-config [--os OS] --host <ip> [--port 4517] [--format sse|proxy|ssh]`: Generate Host (macOS/Linux/Agent) MCP client configuration snippet.
+
+### Provisioning Workflows
+
+#### Windows Guests (WinRM)
 1. Run `setup_winrm.ps1` in an elevated Administrator PowerShell prompt on the Windows VM.
 2. Generate inventory:
-   `uv run scripts/setup_windows_vm.py generate-inventory --host <VM_IP> --user Administrator --password <PASS>`
-3. Test connection: `ansible windows_vms -i ansible/inventory.ini -m win_ping`
-4. Run playbook: `uv run scripts/setup_windows_vm.py run-playbook -v`
-5. Capture snapshot using `setup_utm.py snapshot-create "Win-VM" "Clean-Provisioned"`.
-Read [`references/windows-vm-ansible-setup.md`](references/windows-vm-ansible-setup.md) for detailed steps, WinRM troubleshooting, and IDA remote debugging setup.
+   `uv run scripts/setup_vm.py generate-inventory --os windows --host <VM_IP> --user Administrator --password <PASS>`
+3. Test connection: `ansible windows_vms -i ansible/inventory_windows.ini -m win_ping`
+4. Run playbook: `uv run scripts/setup_vm.py run-playbook --os windows -v`
+5. Read [`references/windows-vm-ansible-setup.md`](references/windows-vm-ansible-setup.md) for detailed WinRM steps, Defender toggle, and troubleshooting.
+
+#### Linux Guests (SSH)
+1. Install and start SSH server on guest VM (`sudo apt install -y openssh-server`).
+2. Generate inventory:
+   `uv run scripts/setup_vm.py generate-inventory --os linux --host <VM_IP> --user <USER> --key-file ~/.ssh/id_ed25519`
+3. Test connection: `ansible linux_vms -i ansible/inventory_linux.ini -m ping`
+4. Run playbook: `uv run scripts/setup_vm.py run-playbook --os linux -v`
+   - Configures `sysctl kernel.yama.ptrace_scope = 0` for debugger process attachment.
+   - Opens ports `23946` (IDA) and `4517` (MCP) in UFW / firewalld.
+   - Stages `/opt/ida_dbgsrv` and installs tools via APT / DNF / Pacman.
+5. Read [`references/linux-vm-ansible-setup.md`](references/linux-vm-ansible-setup.md) for full distro steps.
+
+#### macOS Guests (SSH on Apple Silicon)
+1. Complete setup in UTM and enable **Remote Login** in **System Settings** -> **General** -> **Sharing**.
+2. Generate inventory:
+   `uv run scripts/setup_vm.py generate-inventory --os macos --host <VM_IP> --user <USER> --key-file ~/.ssh/id_ed25519`
+3. Test connection: `ansible macos_vms -i ansible/inventory_macos.ini -m ping`
+4. Run playbook: `uv run scripts/setup_vm.py run-playbook --os macos -v`
+   - Bootstraps Homebrew if missing.
+   - Configures Packet Filter (PF) firewall for ports `23946` (IDA) and `4517` (MCP).
+   - Stages `/opt/ida_dbgsrv` and installs formulae and casks.
+5. Read [`references/macos-vm-ansible-setup.md`](references/macos-vm-ansible-setup.md) for full Apple Silicon virtualization steps.
 ---
+
 ## 10. Troubleshooting & Setup Bug Reference
 
 When emulator or rooted-VM setup fails, match the reported symptom before

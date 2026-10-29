@@ -54,7 +54,6 @@ TOOL_COMMANDS: dict[str, str] = {
     "avdmanager": "avdmanager",
     "sdkmanager": "sdkmanager",
     "qemu": "qemu-system-x86_64",
-    "prlctl": "prlctl",
     "vmrun": "vmrun",
     "xcrun": "xcrun",
     "ida-mcp": "ida-mcp",
@@ -376,14 +375,8 @@ def hypervisor_for(os_name: str, qemu_present: bool) -> HypervisorInfo:
         info["utmctl_path"] = utmctl_path
         info["qemu_img_present"] = qemu_img_present
 
-        if utm_present:
-            info["preferred"] = "utm"
-            info["present"] = True
-        else:
-            preferred = "parallels"
-            present = shutil.which("prlctl") is not None
-            info["preferred"] = preferred
-            info["present"] = present
+        info["preferred"] = "utm"
+        info["present"] = utm_present
     elif os_name == "windows":
         preferred = "vmware"
         present = shutil.which("vmrun") is not None
@@ -785,7 +778,7 @@ def static_requests(manager: str | None) -> list[Candidates]:
 
 def dynamic_requests(os_name: str, manager: str | None) -> tuple[list[Candidates], list[SkipItem]]:
     if os_name == "darwin":
-        return [], [{"name": "parallels", "reason": "manual"}]
+        return [], [{"name": "utm", "reason": "manual"}]
     if os_name == "windows":
         return [], [{"name": "vmware", "reason": "manual"}]
     if os_name != "linux":

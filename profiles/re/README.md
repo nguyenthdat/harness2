@@ -189,7 +189,7 @@ Mục này cung cấp ma trận công cụ reverse engineering toàn diện, đ�
   - `https://ipsw.me/`: Cổng tra cứu và tải trực tiếp file IPSW chính thức từ Apple CDN theo từng model thiết bị và phiên bản iOS.
   - `frida`: Hook runtime trên iOS Simulator, rooted research VM (`vphone-cli`), hoặc thiết bị vật lý jailbreak.
 - **Hypervisor & VM Snapshot Sandboxing**:
-  - **macOS**: UTM.app (`utmctl`) là hypervisor nòng cốt trên Apple Silicon (`arm64`), tận dụng Apple `Virtualization.framework` và QEMU engine cho máy ảo cross-arch. Hỗ trợ vòng đời snapshot máy ảo (`utmctl snapshot`), quản lý phân vùng copy-on-write overlay / internal snapshot định dạng QCOW2 (`qemu-img snapshot`), và kịch bản tự động hóa `profiles/re/agent/skills/tool-setup/scripts/setup_utm.py`. Dự phòng Parallels Desktop (`prlctl`).
+  - **macOS**: UTM.app (`utmctl`) là hypervisor nòng cốt trên Apple Silicon (`arm64`), tận dụng Apple `Virtualization.framework` và QEMU engine cho máy ảo cross-arch. Hỗ trợ vòng đời snapshot máy ảo (`utmctl snapshot`), quản lý phân vùng copy-on-write overlay / internal snapshot định dạng QCOW2 (`qemu-img snapshot`), và kịch bản tự động hóa `profiles/re/agent/skills/tool-setup/scripts/setup_utm.py`.
   - **Linux**: KVM (`/dev/kvm`), `qemu-kvm`. Tối ưu tốc độ ảo hóa native phần cứng.
   - **Windows**: VMware Workstation (`vmrun`) hoặc Hyper-V / WSL2.
 - **IDA Pro Remote Debugging (Docker IPC & UTM VM Setup)**:
