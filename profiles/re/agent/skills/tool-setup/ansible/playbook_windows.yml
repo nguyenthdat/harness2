@@ -95,19 +95,49 @@
         path: "C:\\Tools"
         state: directory
 
-    - name: Generate MCP client configuration template for Computer Use MCP
+    - name: Deploy Computer Use MCP server management script
       ansible.windows.win_copy:
-        dest: "C:\\Tools\\mcp_computer_use_config.json"
-        content: |
-          {
-            "mcpServers": {
-              "computer-use": {
-                "command": "npx",
-                "args": ["-y", "@zavora-ai/computer-use-mcp"]
-              }
-            }
+        src: "start_computer_use_server.ps1"
+        dest: "C:\\Tools\\start_computer_use_server.ps1"
+      when: "'computer-use-mcp' in (tools_catalog.tools | selectattr('enabled', 'equalto', true) | map(attribute='id') | list)"
+
+    - name: Ensure Windows Firewall allows Computer Use MCP server inbound (port 4517)
+      community.windows.win_firewall_rule:
+        name: "Computer-Use-MCP-Server-In"
+        localport: 4517
+        action: allow
+        direction: in
+        protocol: tcp
+        state: present
+        enabled: true
+      when: "'computer-use-mcp' in (tools_catalog.tools | selectattr('enabled', 'equalto', true) | map(attribute='id') | list)"
+    - name: Configure netsh interface portproxy for Computer Use MCP (0.0.0.0:4517 -> 127.0.0.1:4517)
+      ansible.windows.win_powershell:
+        script: |
+          $existing = netsh interface portproxy show v4tov4 | Out-String
+          if ($existing -notmatch "0\.0\.0\.0\s+4517\s+127\.0\.0\.1\s+4517") {
+            netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=4517 connectaddress=127.0.0.1 connectport=4517
+            $Ansible.Changed = $true
+          } else {
+            $Ansible.Changed = $false
           }
       when: "'computer-use-mcp' in (tools_catalog.tools | selectattr('enabled', 'equalto', true) | map(attribute='id') | list)"
+
+    - name: Register Scheduled Task for Computer Use MCP Server on user logon
+      community.windows.win_scheduled_task:
+        name: "ComputerUseMcpServer"
+        description: "Starts @zavora-ai/computer-use-mcp console server on port 4517 upon interactive desktop logon"
+        actions:
+          - path: "powershell.exe"
+            arguments: "-ExecutionPolicy Bypass -WindowStyle Hidden -File C:\\Tools\\start_computer_use_server.ps1 -Action start -Port 4517"
+        triggers:
+          - type: logon
+        username: "{{ ansible_user | default('Administrator') }}"
+        logon_type: interactive_token
+        state: present
+        enabled: true
+      when: "'computer-use-mcp' in (tools_catalog.tools | selectattr('enabled', 'equalto', true) | map(attribute='id') | list)"
+
     - name: Ensure osquery configuration directory exists
       ansible.windows.win_file:
         path: "{{ osquery_config_dir }}"

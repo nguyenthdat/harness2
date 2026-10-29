@@ -13,7 +13,7 @@ Reverse engineering and dynamic analysis frequently demand a pristine Windows gu
 4. **Disassembly & Debugging**: `x64dbg`, `Ghidra`, `Cutter`, `radare2`, `WinDbg`, and `IDA Pro Remote Debugger` (`win64_remote.exe`).
 5. **PE Analysis**: `Detect It Easy (DIE)`, `PeStudio`, `PE-bear`, `YARA`.
 6. **System Utilities**: `7-Zip`, `Git`, `Python 3.12`, `HxD Hex Editor`, `cURL`, and `Node.js LTS`.
-7. **Automation & Agent Control**: `computer-use-mcp` (@zavora-ai/computer-use-mcp) for native Rust NAPI desktop automation (screenshots, mouse, keyboard, clipboard, window management) via stdio MCP or loopback HTTP endpoint (port 3100) via SSH tunnel.
+- 7. **Automation & Agent Control**: `computer-use-mcp` (@zavora-ai/computer-use-mcp) running as an MCP Server on the Windows VM (port 4517) providing native Rust NAPI desktop automation (screenshots, mouse, keyboard, clipboard, window management) to host AI agents (MCP Clients).
 8. **Defender Management**: `toggle_defender.ps1` and `playbook_defender.yml` to toggle real-time protection, script scanning, cloud MAPS reporting, and folder exclusions (`C:\Tools`, `C:\Workspace`).
 Provisioning is automated through:
 - **`ansible/windows_tools.json`**: Declarative tool catalog with package identifiers, binary paths, service definitions, tags, and enable/disable states.
@@ -189,7 +189,7 @@ The playbook executes the following stages:
 3. Creates Windows Firewall rules for WinRM HTTP (5985), WinRM HTTPS (5986), and IDA Pro Remote Debugger (`win64_remote.exe` on port 23946).
 4. Installs all enabled tools from `windows_tools.json` via Chocolatey (including Node.js LTS when required).
 5. Installs global npm packages for enabled tools using `npm.cmd` (e.g. `@zavora-ai/computer-use-mcp`).
-6. Generates template MCP configuration for AI agents at `C:\Tools\mcp_computer_use_config.json`.
+6. Deploys server management script `start_computer_use_server.ps1` to `C:\Tools\start_computer_use_server.ps1`, configures port 4517 firewall rule and netsh portproxy, and registers a logon Scheduled Task (`ComputerUseMcpServer`) for the interactive user desktop session.
 7. Installs Wireshark silently with Npcap loopback capture enabled (`/S`, `package_params: "/loopback_support=yes"`).
 8. Configures `osquery` with an initial `osquery.conf` file, registers `osqueryd` service (with fallback `osqueryd.exe --install`), and ensures `osqueryd` service is started.
 9. Adds tool installation directories (`C:\Program Files\Wireshark`, `C:\ProgramData\chocolatey\bin`, `C:\Program Files\x64dbg\release\x64`, `C:\radare2\bin`, `C:\Tools\ida_dbgsrv`, `C:\Program Files\nodejs`, `%APPDATA%\npm`) to the machine `PATH`.
@@ -258,48 +258,74 @@ uv run profiles/re/agent/skills/tool-setup/scripts/setup_utm.py snapshot-restore
 ### 8.2 Execution & Connectivity Model
 
 > **Crucial Execution & Network Boundary**:
-> 1. **Interactive Desktop Session Required**: Desktop automation tools (screen capture, mouse input, window focus) require an active interactive Windows desktop session (logged into the GUI console or RDP session). Running them under a non-interactive WinRM service session fails because WinRM sessions lack an interactive desktop window station (`WinSta0\Default`).
-> 2. **Loopback Binding**: Upstream `computer-use-mcp-http` binds strictly to `127.0.0.1:3100`, and `computer-use-mcp-console` binds to loopback `127.0.0.1:4517` unauthenticated. They refuse remote connections on external adapter IPs. Do not open firewall ports or expose these loopback sockets directly.
+> 1. **Interactive Desktop Session Required**: Desktop automation tools (screen capture, mouse input, window focus) require an active interactive Windows desktop session (logged into the GUI console or RDP session). Running them under a non-interactive WinRM service session fails because WinRM sessions lack an interactive desktop window station (`WinSta0\Default`). For this reason, the server is registered as a logon Scheduled Task (`ComputerUseMcpServer`) with `logon_type: interactive_token` or started via `C:\Tools\start_computer_use_server.ps1` inside the desktop session.
+> 2. **Loopback & Remote Access**: Upstream `computer-use-mcp-console` listens on `127.0.0.1:4517` unauthenticated and requires `--no-open` on Windows to avoid crashing on spawn `open`. To allow host AI agents on the virtual network to connect directly, `netsh interface portproxy` forwards `0.0.0.0:4517` to `127.0.0.1:4517` and Windows Firewall rule `Computer-Use-MCP-Server-In` permits inbound TCP 4517. Alternatively, access can be tunneled via SSH.
 
-The server supports two primary workflows:
+### 8.3 Server Management on Windows VM (`start_computer_use_server.ps1`)
 
-1. **Local Stdio MCP Server (inside Guest VM)**:
-   Launched by an MCP-compatible agent running directly inside the VM interactive desktop:
-   ```powershell
-   npx -y @zavora-ai/computer-use-mcp
-   ```
-   Or using the globally installed binary:
-   ```powershell
-   computer-use-mcp
-   ```
-   A ready-to-use MCP configuration is generated at `C:\Tools\mcp_computer_use_config.json`:
+The server runner is deployed to `C:\Tools\start_computer_use_server.ps1`. Run inside the Windows VM:
+```powershell
+# Start the server in the interactive desktop session
+C:\Tools\start_computer_use_server.ps1 -Action start -Port 4517
+
+# Inspect running process, listening port, and portproxy configuration
+C:\Tools\start_computer_use_server.ps1 -Action status -Port 4517
+
+# Stop the server
+C:\Tools\start_computer_use_server.ps1 -Action stop
+```
+
+### 8.4 Host AI Agent (MCP Client) Configuration
+
+The Windows VM acts as the **MCP Server**, and the host machine (macOS / Linux / AI Agent) acts as the **MCP Client**.
+
+Generate the client configuration snippet using `setup_windows_vm.py`:
+```bash
+# SSE format (direct network connection to Windows VM)
+uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py mcp-client-config --host 192.168.64.12
+
+# Stdio wrapper format via mcp-proxy (for Claude Desktop, Cursor, OMP)
+uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py mcp-client-config --host 192.168.64.12 --format proxy
+
+# SSH tunnel format (when port 4517 is forwarded via SSH tunnel: ssh -L 4517:127.0.0.1:4517 Administrator@192.168.64.12)
+uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py mcp-client-config --host 192.168.64.12 --format ssh
+```
+
+Generated config snippets for the Host:
+1. **Direct Network / SSE** (`--format sse`):
    ```json
    {
      "mcpServers": {
-       "computer-use": {
-         "command": "npx",
-         "args": ["-y", "@zavora-ai/computer-use-mcp"]
+       "windows-vm-computer-use": {
+         "url": "http://192.168.64.12:4517/mcp"
        }
      }
    }
    ```
 
-2. **Remote HTTP Endpoint via SSH Tunnel (Port 3100)**:
-   To control the Windows VM from an AI agent running on the host machine:
-   - Start the HTTP server from an **interactive desktop session** (PowerShell prompt inside the VM desktop):
-     ```powershell
-     computer-use-mcp-http
-     ```
-     (Listens on `127.0.0.1:3100`).
-   - Forward the port securely from the host via SSH tunnel (or OpenSSH on Windows):
-     ```bash
-     ssh -L 3101:127.0.0.1:3100 Administrator@<VM_IP>
-     ```
-   - The host AI agent connects to `http://127.0.0.1:3101` (or `http://127.0.0.1:3101/mcp`).
-   - For `computer-use-mcp-console --no-demo` (listens on `127.0.0.1:4517`), tunnel via:
-     ```bash
-     ssh -L 4517:127.0.0.1:4517 Administrator@<VM_IP>
-     ```
+2. **Stdio proxy wrapper** (`--format proxy`):
+   ```json
+   {
+     "mcpServers": {
+       "windows-vm-computer-use": {
+         "command": "npx",
+         "args": ["-y", "mcp-proxy", "http://192.168.64.12:4517/mcp"]
+       }
+     }
+   }
+   ```
+
+3. **SSH Tunnel** (`--format ssh`):
+   Forward port first: `ssh -L 4517:127.0.0.1:4517 Administrator@192.168.64.12`
+   ```json
+   {
+     "mcpServers": {
+       "windows-vm-computer-use": {
+         "url": "http://127.0.0.1:4517/mcp"
+       }
+     }
+   }
+   ```
 ---
 
 ## 9. Windows Defender Management for Malware Analysis Labs

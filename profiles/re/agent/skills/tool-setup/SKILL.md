@@ -376,7 +376,7 @@ Contains tools across 7 core categories:
 - **`debugging_disassembly`**: `x64dbg` (x64dbg.x64dbg), `ghidra` (NSA.Ghidra), `cutter` (Rizin.Cutter), `radare2` (radare2.radare2), `windbg` (Microsoft.WinDbg), `ida_dbgsrv` (win64_remote.exe firewall and staging)
 - **`pe_analysis`**: `die` (horsicq.DetectItEasy), `pestudio` (MarcOchsenmeier.pestudio), `pe-bear` (Hasherezade.PE-bear), `yara` (VirusTotal.YARA)
 - **`system_utilities`**: `7zip` (7zip.7zip), `git` (Git.Git), `python3` (Python.Python.3.12), `hxd` (MH-Nexus.HxD), `curl` (cURL.cURL), `nodejs` (Node.js LTS)
-- **`automation_agent`**: `computer-use-mcp` (@zavora-ai/computer-use-mcp, native Rust NAPI desktop automation MCP server via stdio or loopback HTTP port 3100 via SSH tunnel)
+- **`automation_agent`**: `computer-use-mcp` (@zavora-ai/computer-use-mcp, native Rust NAPI desktop automation MCP server running on Windows VM on port 4517, controlled by host AI agent as MCP client)
 ### Helper CLI (`setup_windows_vm.py`)
 Run helper: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py <subcommand>`
 - `list [--category <cat>] [--tag <tag>] [--enabled-only] [--json]`: Enumerate tools in catalog.
@@ -387,8 +387,9 @@ Run helper: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm
 - `generate-inventory --host <ip> --user <user> --password <pass>`: Generate ready-to-use `inventory.ini`.
 - `run-playbook [-i <inv>] [--check] [--tags <t>] [-v]`: Run `playbook_windows.yml` against guest VM.
 - `defender [--action status|disable|enable] [--clear-exclusions] [--exclusions <paths>] [--script-only [-o <path>]] [-i <inv>]`: Manage Windows Defender realtime protection and exclusions locally or remotely.
+- `mcp-client-config --host <ip> [--port 4517] [--format sse|proxy|ssh]`: Generate Host (macOS/Linux/Agent) MCP client configuration snippet.
 ### Computer Use MCP & Windows Defender Automation
-- **Computer Use MCP**: Installed globally via npm (`@zavora-ai/computer-use-mcp`, binary `%APPDATA%\npm\computer-use-mcp.cmd`). Desktop automation (screenshots, mouse, keyboard, clipboard, window management) requires an active interactive desktop GUI session (not WinRM). Exposes stdio (`npx -y @zavora-ai/computer-use-mcp` / `computer-use-mcp`) or loopback HTTP (`computer-use-mcp-http` on `127.0.0.1:3100`). Upstream binds strictly to loopback and refuses remote adapter traffic; connect remotely from host via SSH tunnel (`ssh -L 3101:127.0.0.1:3100 Administrator@<VM_IP>`). Configuration template generated at `C:\Tools\mcp_computer_use_config.json`.
+- **Computer Use MCP**: Installed globally via npm (`@zavora-ai/computer-use-mcp`, binary `%APPDATA%\npm\computer-use-mcp.cmd`). Windows VM acts as the **MCP Server** (`computer-use-mcp-console --no-demo --no-open` on port 4517) running inside the interactive desktop session (configured via scheduled task `ComputerUseMcpServer` and managed via `C:\Tools\start_computer_use_server.ps1`). The host machine (macOS/Linux) acts as the **MCP Client** connecting via SSE (`http://<VM_IP>:4517/mcp`), stdio wrapper via `mcp-proxy`, or SSH tunnel. Generate client configuration with `setup_windows_vm.py mcp-client-config --host <VM_IP>`.
 - **Windows Defender Toggle**: Disable Real-Time Monitoring and add `C:\Tools` / `C:\Workspace` exclusions during malware triage using:
   - Remote via Ansible: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action disable`
   - Local on Guest VM: `powershell -ExecutionPolicy Bypass -File C:\Tools\toggle_defender.ps1 -Action disable`

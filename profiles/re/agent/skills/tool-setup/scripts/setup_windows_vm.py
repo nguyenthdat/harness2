@@ -342,8 +342,11 @@ def cmd_defender(args: argparse.Namespace) -> int:
         return 1
 
     exclusions_list: list[str] = [p.strip() for p in args.exclusions.split(",") if p.strip()]
-    exclusions_json = json.dumps(exclusions_list)
-    clear_excl_str = "true" if args.clear_exclusions else "false"
+    extra_vars = {
+        "defender_action": action,
+        "defender_clear_exclusions": bool(args.clear_exclusions),
+        "defender_exclusions": exclusions_list,
+    }
 
     cmd: list[str] = [
         ansible_bin,
@@ -351,17 +354,52 @@ def cmd_defender(args: argparse.Namespace) -> int:
         str(inv_path),
         str(DEFENDER_PLAYBOOK_PATH),
         "-e",
-        f"defender_action={action}",
-        "-e",
-        f"defender_clear_exclusions={clear_excl_str}",
-        "-e",
-        f"defender_exclusions={exclusions_json}",
+        json.dumps(extra_vars),
     ]
     if args.verbose:
         cmd.append("-" + "v" * min(args.verbose, 4))
     print(f"Executing: {' '.join(cmd)}")
     result = subprocess.run(cmd)
     return result.returncode
+
+
+def cmd_mcp_client_config(args: argparse.Namespace) -> int:
+    host = args.host.strip()
+    port = args.port
+    fmt = args.format.strip().lower()
+
+    if fmt == "sse":
+        config = {
+            "mcpServers": {
+                "windows-vm-computer-use": {
+                    "url": f"http://{host}:{port}/mcp"
+                }
+            }
+        }
+    elif fmt == "proxy":
+        config = {
+            "mcpServers": {
+                "windows-vm-computer-use": {
+                    "command": "npx",
+                    "args": ["-y", "mcp-proxy", f"http://{host}:{port}/mcp"]
+                }
+            }
+        }
+    elif fmt == "ssh":
+        config = {
+            "mcpServers": {
+                "windows-vm-computer-use": {
+                    "url": f"http://127.0.0.1:{port}/mcp"
+                }
+            }
+        }
+    else:
+        print(f"Error: Unknown format '{fmt}'", file=sys.stderr)
+        return 1
+
+    output_json = json.dumps(config, indent=2)
+    print(output_json)
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -433,6 +471,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_def.add_argument("-o", "--output", help="Output file path when using --script-only")
     p_def.add_argument("-i", "--inventory", help="Path to Ansible inventory file for remote execution")
     p_def.add_argument("-v", "--verbose", action="count", default=0, help="Verbose output (-v, -vv, -vvv)")
+    # mcp-client-config
+    p_mcp = subparsers.add_parser("mcp-client-config", help="Generate Host/Agent MCP client configuration snippet for Windows VM remote server")
+    p_mcp.add_argument("--host", required=True, help="Windows VM IP address or hostname (e.g. 192.168.64.12)")
+    p_mcp.add_argument("--port", type=int, default=4517, help="Computer Use MCP Server port (default: 4517)")
+    p_mcp.add_argument("--format", choices=["sse", "proxy", "ssh"], default="sse", help="Client connection format: sse (default), proxy (stdio via mcp-proxy), ssh (loopback with SSH tunnel)")
+
 
     return parser
 
@@ -458,6 +502,8 @@ def main() -> int:
         return cmd_run_playbook(args)
     elif args.command == "defender":
         return cmd_defender(args)
+    elif args.command == "mcp-client-config":
+        return cmd_mcp_client_config(args)
     else:
         parser.print_help()
         return 1

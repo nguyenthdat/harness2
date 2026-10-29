@@ -32,8 +32,11 @@
       ansible.windows.win_powershell:
         script: |
           $params = @{
-              Action         = "{{ defender_action }}"
-              ExclusionPaths = @('{{ defender_exclusions | join("','") }}')
+              Action = "{{ defender_action }}"
+          }
+          $excl = @({% if defender_exclusions | length > 0 %}'{{ defender_exclusions | join("','") }}'{% endif %})
+          if ($excl.Count -gt 0) {
+              $params['ExclusionPaths'] = $excl
           }
           if ('{{ defender_clear_exclusions | bool }}' -eq 'True') {
               $params['ClearExclusions'] = $true
