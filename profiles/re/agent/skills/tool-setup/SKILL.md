@@ -1,17 +1,16 @@
 ---
 name: tool-setup
 description: >-
-  Detect the host and, only when the parent asks, install an allowlisted
-  reverse-engineering tool set with that OS package manager. Linux prefers
-  KVM, macOS prefers UTM (with Parallels fallback), and Windows prefers VMware.
-  Supports UTM VM snapshot lifecycle, QCOW2 differential overlays via
-  setup_utm.py, and IDA Pro remote debugging (Docker remote IPC, UTM VM dbgsrv,
-  port forwarding). Android covers the emulator, a su check, avdmanager/sdkmanager,
-  automated KernelSU patching that replaces an emulator kernel-ranchu on Google
-  Play images, and mitmproxy system CA installation / SSL pinning bypass tooling.
-  Provides setup_android_emulator.py, setup_proxy_ca.py, and setup_utm.py. iOS
-  tooling is macOS only, covering simctl, vphone-cli research VMs, and blacktop/ipsw.
-  Does not install IDA or write a kernel on a physical device.
+  Detect the host and, only when parent asks, install allowlisted RE tools. Linux
+  prefers KVM, macOS UTM, Windows VMware. Supports UTM VM snapshot lifecycle,
+  QCOW2 overlays via setup_utm.py, and IDA Pro remote debugging. Supports automated
+  Ansible provisioning for Windows VMs (windows_tools.json, playbook_windows.yml,
+  setup_windows_vm.py) for osquery, tshark, sysinternals, x64dbg, computer-use-mcp,
+  and Windows Defender toggle automation (toggle_defender.ps1, playbook_defender.yml).
+  Android covers emulator, su check, KernelSU patching on Play images, and mitmproxy
+  CA bypass. Provides setup_android_emulator.py, setup_proxy_ca.py, setup_utm.py, and
+  setup_windows_vm.py. iOS tooling is macOS only (simctl, vphone-cli, ipsw). Does
+  not install IDA or write kernels to physical devices.
 ---
 
 # Tool setup
@@ -39,7 +38,7 @@ Read the single JSON object on stdout.
 - `tools` maps each name to `present` and `path`. Monitored tools include
   `radare2`, `jadx`, `apktool`, `binwalk`, `frida`, `mitmproxy`, `tshark`,
   `adb`, `emulator`, `avdmanager`, `sdkmanager`, `qemu`, `prlctl`, `vmrun`,
-  `xcrun`, `ida-mcp`, `vphone-cli`, `ipsw`, `utmctl`, and `qemu-img`.
+  `xcrun`, `ida-mcp`, `vphone-cli`, `ipsw`, `utmctl`, `qemu-img`, `ansible`, and `ansible-playbook`.
 - `hypervisor.preferred` is `kvm` on Linux, `utm` (or `parallels`) on macOS, and
   `vmware` on Windows. `hypervisor.present` indicates availability of that hypervisor.
   On macOS, `hypervisor.utm_present`, `hypervisor.utmctl_path`, and
@@ -365,7 +364,48 @@ docker run --rm -it \
 Read [`references/ida-remote-debugging.md`](references/ida-remote-debugging.md) for full setup guides, GUI process options, and troubleshooting steps.
 ---
 
-## 9. Troubleshooting & Setup Bug Reference
+## 9. Windows VM Ansible Provisioning & Tool Catalog
+
+For reverse engineering, malware analysis, forensic triage, and live telemetry on Windows guests (under UTM, VMware, or Hyper-V), automated provisioning is provided via Ansible, a structured JSON tool catalog, and a dedicated helper CLI.
+
+### Tool Catalog (`ansible/windows_tools.json`)
+Contains tools across 7 core categories:
+- **`telemetry_monitoring`**: `osquery` (Facebook.osquery), `sysmon` (Microsoft.Sysinternals.Sysmon)
+- **`network_analysis`**: `tshark` / `wireshark` (WiresharkFoundation.Wireshark + Npcap loopback), `fiddler` (Telerik.Fiddler.Classic), `mitmproxy` (Mitmproxy.Mitmproxy)
+- **`forensics_triage`**: `sysinternals` (Procmon, Procexp, Autoruns, TCPView, strings), `autoruns`, `procmon`, `procdot`
+- **`debugging_disassembly`**: `x64dbg` (x64dbg.x64dbg), `ghidra` (NSA.Ghidra), `cutter` (Rizin.Cutter), `radare2` (radare2.radare2), `windbg` (Microsoft.WinDbg), `ida_dbgsrv` (win64_remote.exe firewall and staging)
+- **`pe_analysis`**: `die` (horsicq.DetectItEasy), `pestudio` (MarcOchsenmeier.pestudio), `pe-bear` (Hasherezade.PE-bear), `yara` (VirusTotal.YARA)
+- **`system_utilities`**: `7zip` (7zip.7zip), `git` (Git.Git), `python3` (Python.Python.3.12), `hxd` (MH-Nexus.HxD), `curl` (cURL.cURL), `nodejs` (Node.js LTS)
+- **`automation_agent`**: `computer-use-mcp` (@zavora-ai/computer-use-mcp, native Rust NAPI desktop automation MCP server via stdio or loopback HTTP port 3100 via SSH tunnel)
+### Helper CLI (`setup_windows_vm.py`)
+Run helper: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py <subcommand>`
+- `list [--category <cat>] [--tag <tag>] [--enabled-only] [--json]`: Enumerate tools in catalog.
+- `summary [--json]`: Show high-level tool counts and category breakdown.
+- `enable-tool <id>` / `disable-tool <id>`: Toggle tools in `windows_tools.json`.
+- `add-tool`: Add a new tool to catalog with schema validation.
+- `winrm-script [-o <path>]`: Print or export `setup_winrm.ps1` for execution on guest VM.
+- `generate-inventory --host <ip> --user <user> --password <pass>`: Generate ready-to-use `inventory.ini`.
+- `run-playbook [-i <inv>] [--check] [--tags <t>] [-v]`: Run `playbook_windows.yml` against guest VM.
+- `defender [--action status|disable|enable] [--clear-exclusions] [--exclusions <paths>] [--script-only [-o <path>]] [-i <inv>]`: Manage Windows Defender realtime protection and exclusions locally or remotely.
+### Computer Use MCP & Windows Defender Automation
+- **Computer Use MCP**: Installed globally via npm (`@zavora-ai/computer-use-mcp`, binary `%APPDATA%\npm\computer-use-mcp.cmd`). Desktop automation (screenshots, mouse, keyboard, clipboard, window management) requires an active interactive desktop GUI session (not WinRM). Exposes stdio (`npx -y @zavora-ai/computer-use-mcp` / `computer-use-mcp`) or loopback HTTP (`computer-use-mcp-http` on `127.0.0.1:3100`). Upstream binds strictly to loopback and refuses remote adapter traffic; connect remotely from host via SSH tunnel (`ssh -L 3101:127.0.0.1:3100 Administrator@<VM_IP>`). Configuration template generated at `C:\Tools\mcp_computer_use_config.json`.
+- **Windows Defender Toggle**: Disable Real-Time Monitoring and add `C:\Tools` / `C:\Workspace` exclusions during malware triage using:
+  - Remote via Ansible: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action disable`
+  - Local on Guest VM: `powershell -ExecutionPolicy Bypass -File C:\Tools\toggle_defender.ps1 -Action disable`
+  - Re-enable while preserving analysis tool exclusions: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action enable` (use `--clear-exclusions` only for pristine baseline testing)
+  - Status verification: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py defender --action status`
+
+### Provisioning Workflow
+1. Run `setup_winrm.ps1` in an elevated Administrator PowerShell prompt on the Windows VM.
+2. Generate inventory:
+   `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py generate-inventory --host <VM_IP> --user Administrator --password <PASS>`
+3. Test connection: `ansible windows_vms -i profiles/re/agent/skills/tool-setup/ansible/inventory.ini -m win_ping`
+4. Run playbook: `uv run profiles/re/agent/skills/tool-setup/scripts/setup_windows_vm.py run-playbook -v`
+5. Capture snapshot using `setup_utm.py snapshot-create "Win-VM" "Clean-Provisioned"`.
+
+Read [`references/windows-vm-ansible-setup.md`](references/windows-vm-ansible-setup.md) for detailed steps, WinRM troubleshooting, and IDA remote debugging setup.
+---
+## 10. Troubleshooting & Setup Bug Reference
 
 When emulator or rooted-VM setup fails, match the reported symptom before
 retrying privileged steps. Common failure modes include macOS AMFI rejecting
@@ -381,7 +421,7 @@ Android/iOS setup bugs.
 
 ---
 
-## 10. Never
+## 11. Never
 
 - Do not launch an untrusted malware sample outside isolated sandbox conditions.
 - Do not rewrite `mcp.json` or run `rea setup` or `rea doctor`.

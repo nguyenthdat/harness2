@@ -62,6 +62,8 @@ TOOL_COMMANDS: dict[str, str] = {
     "ipsw": "ipsw",
     "utmctl": "utmctl",
     "qemu-img": "qemu-img",
+    "ansible": "ansible",
+    "ansible-playbook": "ansible-playbook",
 }
 PRESENT_VIA_COMMAND: dict[str, str] = {
     "radare2": "r2",
@@ -76,6 +78,8 @@ PRESENT_VIA_COMMAND: dict[str, str] = {
     "sdkmanager": "sdkmanager",
     "qemu-system-x86": "qemu-system-x86_64",
     "ipsw": "ipsw",
+    "ansible": "ansible",
+    "ansible-playbook": "ansible-playbook",
 }
 STATIC_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
     "brew": {

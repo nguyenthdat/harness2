@@ -1,0 +1,202 @@
+---
+- name: Provision Windows VM for Reverse Engineering, Telemetry, and Forensic Triage
+  hosts: windows_vms
+  gather_facts: true
+
+  vars:
+    tools_catalog_file: "{{ playbook_dir }}/windows_tools.json"
+    tools_catalog: "{{ lookup('file', tools_catalog_file) | from_json }}"
+    ida_remote_port: 23946
+    ida_staging_dir: "C:\\Tools\\ida_dbgsrv"
+    osquery_config_dir: "C:\\Program Files\\osquery"
+
+  tasks:
+    - name: Display Windows system facts
+      ansible.builtin.debug:
+        msg: "Connected to {{ ansible_facts['nodename'] }} (Windows {{ ansible_facts['os_name'] }} build {{ ansible_facts['os_build'] }})"
+
+    - name: Ensure Chocolatey package manager is installed
+      chocolatey.chocolatey.win_chocolatey:
+        name: chocolatey
+        state: present
+
+    - name: Ensure base tools staging directory exists
+      ansible.windows.win_file:
+        path: "{{ ida_staging_dir }}"
+        state: directory
+
+    - name: Configure Windows Firewall rule for WinRM HTTP
+      community.windows.win_firewall_rule:
+        name: WinRM-HTTP-In
+        localport: 5985
+        action: allow
+        direction: in
+        protocol: tcp
+        state: present
+        enabled: true
+
+    - name: Configure Windows Firewall rule for WinRM HTTPS
+      community.windows.win_firewall_rule:
+        name: WinRM-HTTPS-In
+        localport: 5986
+        action: allow
+        direction: in
+        protocol: tcp
+        state: present
+        enabled: true
+
+    - name: Configure Windows Firewall rule for IDA Remote Debugger (win64_remote.exe)
+      community.windows.win_firewall_rule:
+        name: IDA-Pro-Remote-Debugger-x64
+        description: Inbound rule for IDA Pro win64_remote.exe debug server
+        localport: "{{ ida_remote_port }}"
+        action: allow
+        direction: in
+        protocol: tcp
+        state: present
+        enabled: true
+
+    - name: Ensure Node.js LTS is installed if tools require npm
+      chocolatey.chocolatey.win_chocolatey:
+        name: nodejs-lts
+        state: present
+      when: "(tools_catalog.tools | selectattr('enabled', 'defined') | selectattr('enabled', 'equalto', true) | selectattr('npm_package', 'defined') | rejectattr('npm_package', 'none') | rejectattr('npm_package', 'equalto', '') | list | length) > 0"
+    - name: Filter enabled tools that have a Chocolatey package defined
+      ansible.builtin.set_fact:
+        choco_tools: "{{ tools_catalog.tools | selectattr('enabled', 'defined') | selectattr('enabled', 'equalto', true) | selectattr('choco_package', 'defined') | rejectattr('choco_package', 'none') | list }}"
+
+    - name: Install Chocolatey tools (standard packages)
+      chocolatey.chocolatey.win_chocolatey:
+        name: "{{ item.choco_package }}"
+        state: present
+      loop: "{{ choco_tools }}"
+      when: item.choco_package not in ['wireshark']
+      register: choco_standard_install
+
+    - name: Install Wireshark with silent Npcap and loopback support arguments
+      chocolatey.chocolatey.win_chocolatey:
+        name: wireshark
+        state: present
+        package_params: "/loopback_support=yes"
+        install_args: "/S"
+      when: "'wireshark' in (choco_tools | map(attribute='choco_package') | list)"
+
+    - name: Filter enabled tools that have an npm package defined
+      ansible.builtin.set_fact:
+        npm_tools: "{{ tools_catalog.tools | selectattr('enabled', 'defined') | selectattr('enabled', 'equalto', true) | selectattr('npm_package', 'defined') | rejectattr('npm_package', 'none') | rejectattr('npm_package', 'equalto', '') | list }}"
+
+    - name: Install global npm packages for enabled tools
+      ansible.windows.win_command: '"C:\Program Files\nodejs\npm.cmd" install -g {{ item.npm_package }}'
+      loop: "{{ npm_tools }}"
+      when: npm_tools | length > 0
+
+    - name: Ensure Tools root directory exists
+      ansible.windows.win_file:
+        path: "C:\\Tools"
+        state: directory
+
+    - name: Generate MCP client configuration template for Computer Use MCP
+      ansible.windows.win_copy:
+        dest: "C:\\Tools\\mcp_computer_use_config.json"
+        content: |
+          {
+            "mcpServers": {
+              "computer-use": {
+                "command": "npx",
+                "args": ["-y", "@zavora-ai/computer-use-mcp"]
+              }
+            }
+          }
+      when: "'computer-use-mcp' in (tools_catalog.tools | selectattr('enabled', 'equalto', true) | map(attribute='id') | list)"
+    - name: Ensure osquery configuration directory exists
+      ansible.windows.win_file:
+        path: "{{ osquery_config_dir }}"
+        state: directory
+      when: "'osquery' in (choco_tools | map(attribute='id') | list)"
+
+    - name: Check if osquery.conf exists
+      ansible.windows.win_stat:
+        path: "{{ osquery_config_dir }}\\osquery.conf"
+      register: osquery_conf_stat
+      when: "'osquery' in (choco_tools | map(attribute='id') | list)"
+
+    - name: Create baseline osquery.conf if not present
+      ansible.windows.win_copy:
+        dest: "{{ osquery_config_dir }}\\osquery.conf"
+        content: |
+          {
+            "options": {
+              "config_plugin": "filesystem",
+              "logger_plugin": "filesystem",
+              "logger_path": "C:\\ProgramData\\osquery\\log",
+              "schedule_splay_percent": 10
+            },
+            "schedule": {
+              "system_info": {
+                "query": "SELECT hostname, cpu_brand, physical_memory FROM system_info;",
+                "interval": 3600
+              },
+              "process_snapshot": {
+                "query": "SELECT pid, name, path, cmdline, parent FROM processes;",
+                "interval": 300
+              },
+              "listening_ports": {
+                "query": "SELECT pid, port, protocol, address FROM listening_ports;",
+                "interval": 300
+              }
+            }
+          }
+      when:
+        - "'osquery' in (choco_tools | map(attribute='id') | list)"
+        - not osquery_conf_stat.stat.exists
+
+    - name: Check if osqueryd service exists
+      ansible.windows.win_service:
+        name: osqueryd
+      register: osqueryd_service_status
+      failed_when: false
+      when: "'osquery' in (choco_tools | map(attribute='id') | list)"
+
+    - name: Fallback register osqueryd service if not registered by Chocolatey
+      ansible.windows.win_command: >-
+        "C:\Program Files\osquery\osqueryd.exe" --install --config_path="{{ osquery_config_dir }}\osquery.conf"
+      when:
+        - "'osquery' in (choco_tools | map(attribute='id') | list)"
+        - osqueryd_service_status.exists is defined
+        - not osqueryd_service_status.exists
+
+    - name: Ensure osqueryd service is registered and running
+      ansible.windows.win_service:
+        name: osqueryd
+        start_mode: auto
+        state: started
+      when: "'osquery' in (choco_tools | map(attribute='id') | list)"
+    - name: Configure System PATH environment variable for RE & forensic tools
+      ansible.windows.win_path:
+        elements:
+          - "C:\\Program Files\\Wireshark"
+          - "C:\\ProgramData\\chocolatey\\bin"
+          - "C:\\Program Files\\osquery"
+          - "C:\\Program Files\\x64dbg\\release\\x64"
+          - "C:\\radare2\\bin"
+          - "C:\\Tools\\ida_dbgsrv"
+          - "C:\\Python312"
+          - "C:\\Python312\\Scripts"
+          - "C:\\Program Files\\nodejs"
+        state: present
+        scope: machine
+
+    - name: Verify installed tool binaries
+      ansible.windows.win_stat:
+        path: "{{ (ansible_env.APPDATA + '\\npm\\computer-use-mcp.cmd') if item.id == 'computer-use-mcp' else item.binary_path }}"
+      loop: "{{ tools_catalog.tools | selectattr('enabled', 'equalto', true) | list }}"
+      register: tool_binary_check
+      ignore_errors: true
+
+    - name: Summary report of provisioned tools
+      ansible.builtin.debug:
+        msg: >-
+          Tool '{{ item.item.name }}' ({{ item.item.id }}):
+          {{ 'FOUND at ' + item.item.binary_path if item.stat is defined and item.stat.exists else 'NOT DETECTED (pending reboot or manual drop)' }}
+      loop: "{{ tool_binary_check.results }}"
+      when: item.item is defined
